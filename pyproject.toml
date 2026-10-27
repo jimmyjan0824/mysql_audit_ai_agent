@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mysql-audit-ai-agent"
+version = "0.1.0"
+description = "MySQL schema-change safety review for AI coding agents (MCP server and CLI)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "sqlglot>=30",
+    "mcp>=2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+mysql-audit = "mysql_audit.cli:main"
+mysql-audit-mcp = "mysql_audit.mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mysql_audit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
