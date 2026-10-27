@@ -1,0 +1,53 @@
+name: MySQL Audit
+description: Review MySQL migrations in pull requests for table locks, table copies, data loss and SQL injection.
+author: jimmyjan0824
+branding:
+  icon: database
+  color: blue
+
+inputs:
+  paths:
+    description: Glob patterns (comma or newline separated) of migration files to review.
+    default: "**/*.sql"
+  schema:
+    description: Path to a file with the current CREATE TABLE statements (e.g. a schema dump). Makes column and index checks exact.
+    default: ""
+  stats:
+    description: 'Path to a JSON file of approximate row counts, e.g. {"orders": 25000000}. Enables the large-table rules.'
+    default: ""
+  code-paths:
+    description: Optional glob patterns of application code to check for SQL built by string concatenation.
+    default: ""
+  changed-only:
+    description: In pull requests, review only the files the pull request adds or changes.
+    default: "true"
+  fail-on:
+    description: 'Fail the check when the worst verdict reaches this level (block, review or never).'
+    default: block
+  comment:
+    description: Post (and keep updating) one summary comment on the pull request.
+    default: "true"
+  github-token:
+    description: Token used to list the pull request's files and comment on it.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install MySQL Audit
+      shell: bash
+      run: |
+        python3 -m venv "$RUNNER_TEMP/mysql-audit"
+        "$RUNNER_TEMP/mysql-audit/bin/pip" install --quiet --disable-pip-version-check "${{ github.action_path }}"
+    - name: Review migrations
+      shell: bash
+      run: '"$RUNNER_TEMP/mysql-audit/bin/python" -m mysql_audit.github_action'
+      env:
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_SCHEMA: ${{ inputs.schema }}
+        INPUT_STATS: ${{ inputs.stats }}
+        INPUT_CODE_PATHS: ${{ inputs.code-paths }}
+        INPUT_CHANGED_ONLY: ${{ inputs.changed-only }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

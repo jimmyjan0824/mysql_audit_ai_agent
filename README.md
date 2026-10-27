@@ -76,6 +76,32 @@ mysql-audit --code app/models/user.py      # SQL injection check
 
 Exit code: 0 safe, 1 review, 2 block, so it can gate CI.
 
+## GitHub Action
+
+Reviews the migrations each pull request adds or changes, annotates the lines in the diff,
+keeps one summary comment on the pull request up to date, and fails the check on `block`.
+
+```yaml
+# .github/workflows/mysql-audit.yml
+name: MySQL Audit
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write   # for the summary comment
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jimmyjan0824/mysql_audit_ai_agent@v0.2.0
+        with:
+          paths: db/migrate/**/*.sql      # default: **/*.sql
+          schema: db/schema.sql           # optional, makes checks exact
+          # stats: db/table_rows.json     # optional row counts, enables large-table rules
+          # code-paths: app/**/*.py       # optional SQL injection check
+          # fail-on: review               # block (default), review or never
+```
+
 ## Development
 
 ```bash
