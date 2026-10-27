@@ -77,6 +77,9 @@ def analyze(stmt: Statement) -> Analyzed:
             name, _ = read_table_name(toks, i)
             return Analyzed(stmt, "create_table", [name] if name else [], temporary=temporary,
                             tree=_parse(stmt))
+        if "VIEW" in w[:8]:
+            name, _ = read_table_name(toks, w.index("VIEW") + 1)
+            return Analyzed(stmt, "create_view", [name] if name else [])
         if "INDEX" in w[:4] and "ON" in w:
             name, _ = read_table_name(toks, w.index("ON") + 1)
             a = Analyzed(stmt, "create_index", [name] if name else [])

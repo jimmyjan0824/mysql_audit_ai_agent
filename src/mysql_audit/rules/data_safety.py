@@ -42,6 +42,13 @@ def _check_l07(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
     actions = _destructive_actions(a, ctx)
     if not actions:
         return []
+    if a.kind == "drop_table" and all(t in ctx.recreated for t in a.tables):
+        return [finding(
+            "L07", Severity.WARN, a,
+            "Drop-and-recreate of " + ", ".join(f"`{t}`" for t in a.tables) + ": this looks like an install or reset script.",
+            "Fine on an empty database. Run against a database that has data, it deletes all of it.",
+            "Keep install scripts separate from migrations, and never point them at production.",
+        )]
     return [finding(
         "L07", Severity.BLOCK, a,
         "This statement " + ", ".join(actions) + ".",

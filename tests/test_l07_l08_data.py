@@ -49,3 +49,9 @@ L08_CASES = [
 @pytest.mark.parametrize("sql,expected", L08_CASES)
 def test_l08(check, sql, expected):
     assert check(sql, "L08") == expected
+
+
+def test_l07_drop_and_recreate_is_a_warning(check):
+    sql = "DROP TABLE IF EXISTS users; CREATE TABLE users (id BIGINT PRIMARY KEY)"
+    assert check(sql, "L07") == ["warn"]
+    assert check("DROP TABLE users, orders; CREATE TABLE users (id INT)", "L07") == ["block"]
