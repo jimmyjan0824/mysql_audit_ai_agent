@@ -22,7 +22,11 @@ def _destructive_actions(a: Analyzed, ctx: ScriptContext) -> list[str]:
     if a.kind == "truncate":
         return [f"deletes every row of `{a.table}`"]
     if a.kind == "rename_table":
-        return ["renames a table"]
+        # A swap (RENAME TABLE t TO t_old, t_new TO t) keeps every name the
+        # application uses; only names that disappear are a problem.
+        targets = {new for _, new in a.renames}
+        return [f"renames table `{old}` to `{new}`" for old, new in a.renames
+                if old not in targets and not ctx.is_new(old)]
     if a.kind != "alter_table" or ctx.is_new(a.table):
         return []
     actions = []
