@@ -51,6 +51,7 @@ class Analyzed:
     temporary: bool = False
     tree: exp.Expression | None = None
     index_columns: list[str] = field(default_factory=list)  # CREATE INDEX columns
+    renames: list[tuple[str, str]] = field(default_factory=list)  # RENAME TABLE (old, new) pairs
 
     @property
     def table(self) -> str | None:
@@ -104,8 +105,14 @@ def analyze(stmt: Statement) -> Analyzed:
         return Analyzed(stmt, "drop_database")
 
     if w[:2] == ["RENAME", "TABLE"]:
-        tables = [n for part in split_top_level(toks[2:]) if (n := read_table_name(part, 0)[0])]
-        return Analyzed(stmt, "rename_table", tables)
+        a = Analyzed(stmt, "rename_table")
+        for part in split_top_level(toks[2:]):
+            old, i = read_table_name(part, 0)
+            new, _ = read_table_name(part, i + 1)  # skip TO
+            if old and new:
+                a.tables.append(old)
+                a.renames.append((old, new))
+        return a
 
     if w[0] == "TRUNCATE":
         i = 2 if len(w) > 1 and w[1] == "TABLE" else 1

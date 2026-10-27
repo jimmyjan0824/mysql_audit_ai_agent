@@ -55,3 +55,9 @@ def test_l07_drop_and_recreate_is_a_warning(check):
     sql = "DROP TABLE IF EXISTS users; CREATE TABLE users (id BIGINT PRIMARY KEY)"
     assert check(sql, "L07") == ["warn"]
     assert check("DROP TABLE users, orders; CREATE TABLE users (id INT)", "L07") == ["block"]
+
+
+def test_l07_table_swap_is_not_destructive(check):
+    swap = "CREATE TABLE users_new LIKE users; RENAME TABLE users TO users_old, users_new TO users"
+    assert check(swap, "L07") == []
+    assert check("RENAME TABLE users TO members, orders TO orders", "L07") == ["block"]
