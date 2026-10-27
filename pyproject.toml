@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "pymysql>=1.1"]
 
 [project.scripts]
 mysql-audit = "mysql_audit.cli:main"

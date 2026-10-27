@@ -18,3 +18,33 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: pytest -q
+
+  mysql:
+    # Checks every rule's judgment against a real server (tests/test_mysql_oracle.py).
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mysql-version: ["8.0", "8.4"]
+    services:
+      mysql:
+        image: mysql:${{ matrix.mysql-version }}
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_PASSWORD: root
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest -q tests/test_mysql_oracle.py

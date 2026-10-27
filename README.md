@@ -54,6 +54,15 @@ pytest
 
 Every rule has positive and negative test cases under `tests/`.
 
+`tests/test_mysql_oracle.py` checks the rules against a real server: each ALTER is
+run with `ALGORITHM=INPLACE, LOCK=NONE`, and MySQL's refusal (or not) must match the
+rule's verdict. CI runs it on MySQL 8.0 and 8.4. Locally:
+
+```bash
+docker run -d -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 mysql:8.4
+MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root pytest tests/test_mysql_oracle.py
+```
+
 ## 中文說明
 
 給 AI 編碼代理用的 MySQL 變更安全審查。代理在執行 migration 前呼叫 `review_migration`，
