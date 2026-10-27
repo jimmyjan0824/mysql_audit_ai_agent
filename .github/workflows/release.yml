@@ -1,7 +1,8 @@
 name: Release
 
 # Push a tag like v0.1.0 (matching the version in pyproject.toml and server.json)
-# to publish the package to PyPI and the server to the official MCP Registry.
+# to publish the package to PyPI and the server to the official MCP Registry,
+# and attach an MCPB bundle (one-click install, Smithery) to the GitHub release.
 on:
   push:
     tags: ["v*"]
@@ -28,6 +29,7 @@ jobs:
               "pyproject.toml": tomllib.load(open("pyproject.toml", "rb"))["project"]["version"],
               "server.json": json.load(open("server.json"))["version"],
               "server.json package": json.load(open("server.json"))["packages"][0]["version"],
+              "mcpb/manifest.json": json.load(open("mcpb/manifest.json"))["version"],
           }
           bad = {k: v for k, v in versions.items() if v != tag}
           sys.exit(f"tag v{tag} does not match {bad}" if bad else 0)
@@ -57,3 +59,21 @@ jobs:
           exit 1
       - run: ./mcp-publisher login github-oidc
       - run: ./mcp-publisher publish
+
+  mcpb:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # attach the bundle to the release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: ./scripts/build_mcpb.sh
+      - name: Attach the bundle to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" dist/mysql-audit.mcpb --clobber

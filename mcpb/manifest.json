@@ -1,0 +1,40 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "mysql-audit",
+  "display_name": "MySQL Audit",
+  "version": "0.1.0",
+  "description": "MySQL migration and query safety review for AI agents: locks, table copies, data loss, injection.",
+  "long_description": "Reviews MySQL DDL, migration scripts, queries and application code before they run. Flags table copies and write locks (Online DDL ALGORITHM/LOCK), metadata-lock stalls, foreign keys added with checks on, data loss from DROP/RENAME, unbatched backfills, queries without a usable index, integer overflow and SQL built by string concatenation. Each finding comes with the impact and a safe rewrite. Runs locally; your SQL never leaves your machine.",
+  "author": {
+    "name": "jimmyjan0824",
+    "url": "https://github.com/jimmyjan0824"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jimmyjan0824/mysql_audit_ai_agent"
+  },
+  "homepage": "https://github.com/jimmyjan0824/mysql_audit_ai_agent",
+  "support": "https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/mysql_audit/mcp_server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "mysql-audit-mcp"]
+    }
+  },
+  "tools": [
+    {"name": "review_migration", "description": "Review MySQL DDL or a migration script for locking, data-loss and replication risks."},
+    {"name": "review_query", "description": "Review application queries for missing indexes, full scans and unsafe writes."},
+    {"name": "review_code", "description": "Find SQL built by string concatenation or interpolation in application code."},
+    {"name": "explain_rule", "description": "Explain one rule: why it matters and a safe example."},
+    {"name": "list_rules", "description": "List every rule with its id, title and default severity."}
+  ],
+  "keywords": ["mysql", "migration", "online-ddl", "schema-change", "sql-review"],
+  "license": "Apache-2.0",
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": {"python": ">=3.10"}
+  }
+}
