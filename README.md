@@ -1,5 +1,7 @@
 # mysql_audit_ai_agent
 
+<!-- mcp-name: io.github.jimmyjan0824/mysql-audit -->
+
 MySQL schema-change safety review for AI coding agents.
 
 Before Claude Code, Cursor or another agent runs a migration, it sends the SQL to
@@ -35,17 +37,35 @@ Tables created earlier in the same script are treated as empty, so DDL on them i
 
 ## Use with an AI agent (MCP)
 
+Requires [uv](https://docs.astral.sh/uv/). The server runs locally over stdio; your SQL never
+leaves your machine.
+
+**Claude Code**
+
 ```bash
-pip install -e .            # PyPI release comes later
-claude mcp add mysql-audit -- mysql-audit-mcp
+claude mcp add mysql-audit -- uvx mysql-audit-ai-agent
+```
+
+**Cursor, Windsurf, Claude Desktop and other MCP clients** (`mcp.json` / `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "mysql-audit": { "command": "uvx", "args": ["mysql-audit-ai-agent"] }
+  }
+}
 ```
 
 Tools: `review_migration(sql, schema?, stats?)`, `review_query(sql, schema?, stats?)`,
 `review_code(code)`, `explain_rule(rule_id)`, `list_rules()`.
 
+In our [agent evaluation](docs/agent-eval.md) Claude Code called the tool on its own in 10 of
+10 migration tasks, with no extra prompt.
+
 ## Command line
 
 ```bash
+pip install mysql-audit-ai-agent
 mysql-audit migrations/20261027_add_index.sql --schema schema.sql
 mysql-audit migration.sql --stats rows.json --format json
 mysql-audit --code app/models/user.py      # SQL injection check
