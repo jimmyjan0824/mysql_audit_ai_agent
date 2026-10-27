@@ -16,7 +16,8 @@ def hits(sql, rule, stats=BIG, schema=None):
 L03_CASES = [
     ("ALTER TABLE users ADD INDEX idx_email (email)" + OPT, ["warn"]),
     ("CREATE INDEX idx_email ON users (email)", ["warn"]),
-    ("ALTER TABLE users MODIFY name VARCHAR(60) NOT NULL" + OPT, ["warn"]),
+    ("ALTER TABLE users MODIFY name VARCHAR(60) NOT NULL" + OPT, []),  # metadata only: no rows read
+    ("ALTER TABLE users MODIFY name VARCHAR(70) NOT NULL" + OPT, ["warn"]),  # 280 bytes: copies the table
     ("ALTER TABLE users ENGINE=InnoDB", ["warn"]),
     ("ALTER TABLE `shop`.`orders` ADD INDEX i (a)" + OPT, ["warn"]),
     ("ALTER TABLE users ADD COLUMN note INT, ALGORITHM=INSTANT", []),
@@ -74,3 +75,16 @@ def test_l09(sql, expected):
 def test_l09_defers_to_size():
     assert hits("UPDATE users SET age = 0 WHERE age IS NULL", "L09") == []   # large: L06
     assert hits("UPDATE tags SET a = 1 WHERE b = 2", "L09") == []            # known small
+
+
+@pytest.mark.parametrize("alter,flagged", [
+    ("ALTER TABLE big MODIFY name VARCHAR(60) NOT NULL", False),          # grows within 255 bytes
+    ("ALTER TABLE big MODIFY name VARCHAR(60)", True),                    # also drops NOT NULL: rows rewritten
+    ("ALTER TABLE big MODIFY state ENUM('a', 'b', 'c') NOT NULL", False),  # member appended
+    ("ALTER TABLE big MODIFY note VARCHAR(20) NOT NULL", True),           # NULL -> NOT NULL
+])
+def test_l03_metadata_only_modify(alter, flagged):
+    schema = ("CREATE TABLE big (id INT NOT NULL PRIMARY KEY, name VARCHAR(50) NOT NULL, "
+              "state ENUM('a', 'b') NOT NULL, note VARCHAR(20)) DEFAULT CHARSET=utf8mb4;")
+    report = review(alter, schema=schema, stats={"big": 5_000_000})
+    assert any(f.rule_id == "L03" for f in report.findings) is flagged

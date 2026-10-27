@@ -1,0 +1,79 @@
+# MySQL Audit DBA 試用包
+
+MySQL Audit 會在 migration 和查詢**執行之前**審查它們，找出會鎖表、整表複製、遺失資料、拖垮複寫的寫法，並附上安全的改寫方式。主要使用者是 Claude Code、Cursor 這類 AI 程式助理，也可以用命令列或 GitHub Action 執行。
+
+我們想請您用 DBA 的經驗檢查：**它的判斷對不對？漏了什麼？建議做法實際可行嗎？** 大約 10 到 20 分鐘。
+
+## 1. 安裝（1 分鐘）
+
+需要 Python 3.10 以上。
+
+```bash
+pip install mysql-audit-ai-agent
+# 或不安裝直接執行：uvx --from mysql-audit-ai-agent mysql-audit --help
+```
+
+## 2. 跑一遍範例（3 分鐘）
+
+```bash
+git clone https://github.com/jimmyjan0824/mysql_audit_ai_agent
+cd mysql_audit_ai_agent
+python trial/run.py        # 每個範例的預期結果與實際結果
+python trial/run.py -v     # 加上每一條發現的說明
+```
+
+範例用的是一個小型電商資料庫（[schema.sql](schema.sql)），並假設 `orders` 有 2,500 萬筆、`users` 有 240 萬筆（[stats.json](stats.json)）。每個範例都在 CI 裡實際於 MySQL 8.0 和 8.4 上執行過。
+
+| 範例 | 規則 | 預期 | 想請您確認的地方 |
+|---|---|---|---|
+| 01_add_column_instant | | safe | INSTANT 加欄位＋短 lock_wait_timeout，這樣算安全嗎？ |
+| 02_fulltext_index | L01 L03 | review | FULLTEXT 只能 LOCK=SHARED，寫入會等整個建索引過程 |
+| 03_change_column_type | L02 | block | INT → BIGINT 一定是 COPY |
+| 04_varchar_255_byte_boundary | L02 | block | utf8mb4 VARCHAR(60)→(100) 跨過 255 bytes，要整表複製 |
+| 05_varchar_within_boundary | | safe | 沒跨過 255 bytes，只改 metadata |
+| 06_index_on_large_table | L03 | review | 線上建索引，但 2,500 萬筆會跑很久、複寫延遲 |
+| 07_no_lock_wait_timeout | L04 | review | 預設 lock_wait_timeout 一年，卡 metadata lock 時流量會排隊 |
+| 08_foreign_key_checks_on | L05 | block | foreign_key_checks=1 加外鍵只能 COPY |
+| 09_foreign_key_checks_off | L05 | review | 關掉檢查改用 INPLACE，但舊資料不會被驗證 |
+| 10_big_update | L06 | review | 一個交易更新幾百萬筆 |
+| 11_batched_update | | safe | 依主鍵範圍分批 |
+| 12_drop_column | L07 | block | 舊版程式還在讀這個欄位 |
+| 13_table_swap | | safe | RENAME 交換表名，應用程式用的名稱不變 |
+| 14_delete_without_where | L08 | block | |
+| 15_limit_without_order | L08 | review | LIMIT 沒有 ORDER BY，複寫不安全 |
+| 16_unbatched_backfill_unknown_size | L09 | review | 不知道表大小時要求分批或提供筆數 |
+| 17_int_auto_increment | L10 | review | INT 自增主鍵 21 億會用完 |
+| 18_query_without_index | L11 | review | WHERE 欄位沒有索引 |
+| 19_query_with_index | | safe | |
+| code/injection.py | L12 | block | 字串拼接 SQL |
+| code/parameterized.py | | safe | 參數化查詢 |
+
+我們最想聽到意見的判斷：
+1. **大表門檻**：100 萬筆以上就建議用 gh-ost / pt-online-schema-change（L03、L06）。您的經驗中門檻是多少？
+2. **lock_wait_timeout 上限 60 秒**（L04）。您平常設多少？
+3. **INT UNSIGNED 自增主鍵只給警告**（L10）。
+4. 有沒有您常見、但這 12 條規則**完全沒涵蓋**的事故類型？
+
+## 3. 用您自己的 migration（5 到 10 分鐘，最有價值）
+
+```bash
+# 現有表結構（不含資料）
+mysqldump --no-data --skip-comments your_db > schema.sql
+# 每張表的大約筆數
+mysql -N -e "SELECT JSON_OBJECTAGG(table_name, table_rows) FROM information_schema.tables WHERE table_schema = 'your_db' AND table_type = 'BASE TABLE'" > stats.json
+
+mysql-audit your_migration.sql --schema schema.sql --stats stats.json
+```
+
+結束碼 0 = safe、1 = review、2 = block。所有判斷都在本機執行，SQL 不會傳到任何地方。
+
+## 4. 回報誤判
+
+請到 [回報表單](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml) 填寫：被審查的 SQL、表結構、工具的輸出，以及實際上會怎樣、依據是什麼（例如「在 8.0.36 用 ALGORITHM=INPLACE, LOCK=NONE 實際跑成功」）。表名或欄位名不便公開的話，請先改成假的名稱。
+
+不論是誤報（其實安全卻被擋）、漏報（其實危險卻沒抓到），還是建議做法不可行，都非常歡迎。
+
+## 也可以這樣用
+
+- **Claude Code**：`claude mcp add mysql-audit -- uvx mysql-audit-ai-agent`，之後 AI 在跑 migration 前會自己呼叫審查。
+- **GitHub Action**：每個 PR 自動審查改到的 migration，設定見[主 README](../README.md#github-action)。

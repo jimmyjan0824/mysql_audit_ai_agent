@@ -12,10 +12,12 @@ Runs only when MYSQL_HOST is set, e.g.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
 from mysql_audit import review
+from mysql_audit.splitter import split_statements
 
 pymysql = pytest.importorskip("pymysql")
 
@@ -156,3 +158,21 @@ def test_metadata_lock_wait_times_out(db):
     finally:
         holder.rollback()
         holder.close()
+
+
+TRIAL = Path(__file__).parent.parent / "trial"
+
+
+@pytest.mark.parametrize("path", sorted((TRIAL / "migrations").glob("*.sql")), ids=lambda p: p.name)
+def test_trial_migration_runs_on_mysql(path):
+    """Every example in the DBA trial kit runs as written on an empty copy of its schema."""
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DROP DATABASE IF EXISTS mysql_audit_trial")
+            cur.execute("CREATE DATABASE mysql_audit_trial")
+            cur.execute("USE mysql_audit_trial")
+            for stmt in split_statements((TRIAL / "schema.sql").read_text()) + split_statements(path.read_text()):
+                cur.execute(stmt.sql)
+    finally:
+        conn.close()

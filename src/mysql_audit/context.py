@@ -27,6 +27,7 @@ _SET_RE = re.compile(r"(lock_wait_timeout|foreign_key_checks)=([a-z0-9_]+)$")
 class Column:
     type: exp.DataType
     charset: str | None = None
+    nullable: bool = True
 
 
 @dataclass
@@ -93,12 +94,17 @@ class ScriptContext:
             if isinstance(item, exp.ColumnDef) and isinstance(item.kind, exp.DataType):
                 name = item.name.lower()
                 charset = None
+                nullable = True
                 for c in item.constraints:
                     if isinstance(c.kind, exp.CharacterSetColumnConstraint):
                         charset = c.kind.this.name.lower()
+                    elif isinstance(c.kind, exp.NotNullColumnConstraint) and not c.kind.args.get("allow_null"):
+                        nullable = False
                     elif isinstance(c.kind, (exp.PrimaryKeyColumnConstraint, exp.UniqueColumnConstraint)):
+                        if isinstance(c.kind, exp.PrimaryKeyColumnConstraint):
+                            nullable = False
                         self.add_index(t, [name], unique=True)
-                cols[name] = Column(item.kind, charset)
+                cols[name] = Column(item.kind, charset, nullable)
             elif isinstance(item, exp.PrimaryKey):
                 self.add_index(t, _names(item.expressions), unique=True)
             elif isinstance(item, exp.UniqueColumnConstraint) and isinstance(item.this, exp.Schema):
