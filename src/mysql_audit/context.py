@@ -17,6 +17,8 @@ CHARSET_MAXLEN = {
     "ucs2": 2, "utf16": 4, "utf32": 4, "gbk": 2, "big5": 2, "sjis": 2,
 }
 DEFAULT_CHARSET = "utf8mb4"  # MySQL 8.0 default
+LARGE_TABLE_ROWS = 1_000_000  # above this, DDL and bulk writes need online tooling
+SMALL_TABLE_ROWS = 10_000     # below this, a full scan is cheap
 
 _SET_RE = re.compile(r"(lock_wait_timeout|foreign_key_checks)=([a-z0-9_]+)$")
 
@@ -32,6 +34,9 @@ class ScriptContext:
     columns: dict[str, dict[str, Column]] = field(default_factory=dict)
     table_charset: dict[str, str] = field(default_factory=dict)
     created_tables: set[str] = field(default_factory=set)
+    indexes: dict[str, list[list[str]]] = field(default_factory=dict)  # column lists, leftmost first
+    uniques: dict[str, list[list[str]]] = field(default_factory=dict)  # primary key and unique keys
+    rows: dict[str, int] = field(default_factory=dict)                 # approximate row counts
     lock_wait_timeout: int | None = None
     fk_checks_off: bool = False
     reported: set[str] = field(default_factory=set)  # once-per-script rules
@@ -44,6 +49,26 @@ class ScriptContext:
         if table is None or name is None:
             return None
         return self.columns.get(table, {}).get(name)
+
+    def size(self, table: str | None) -> int | None:
+        return self.rows.get(table) if table else None
+
+    def is_large(self, table: str | None) -> bool:
+        return (self.size(table) or 0) >= LARGE_TABLE_ROWS
+
+    def is_small(self, table: str | None) -> bool:
+        rows = self.size(table)
+        return rows is not None and rows < SMALL_TABLE_ROWS
+
+    def knows(self, table: str | None) -> bool:
+        """True when the schema of the table was given or created in the script."""
+        return table is not None and table in self.columns
+
+    def add_index(self, table: str | None, cols: list[str], unique: bool = False) -> None:
+        if table and cols:
+            self.indexes.setdefault(table, []).append(cols)
+            if unique:
+                self.uniques.setdefault(table, []).append(cols)
 
     def charset_of(self, table: str | None, col: Column | None) -> str:
         if col is not None and col.charset:
@@ -59,16 +84,30 @@ class ScriptContext:
         tree = a.tree
         if not isinstance(tree, exp.Create) or not isinstance(tree.this, exp.Schema):
             return
+        t = a.table
         cols: dict[str, Column] = {}
-        for coldef in tree.this.expressions:
-            if not isinstance(coldef, exp.ColumnDef) or not isinstance(coldef.kind, exp.DataType):
-                continue
-            charset = None
-            for c in coldef.constraints:
-                if isinstance(c.kind, exp.CharacterSetColumnConstraint):
-                    charset = c.kind.this.name.lower()
-            cols[coldef.name.lower()] = Column(coldef.kind, charset)
-        self.columns[a.table] = cols
+        self.indexes[t] = []
+        self.uniques[t] = []
+        for item in tree.this.expressions:
+            if isinstance(item, exp.ColumnDef) and isinstance(item.kind, exp.DataType):
+                name = item.name.lower()
+                charset = None
+                for c in item.constraints:
+                    if isinstance(c.kind, exp.CharacterSetColumnConstraint):
+                        charset = c.kind.this.name.lower()
+                    elif isinstance(c.kind, (exp.PrimaryKeyColumnConstraint, exp.UniqueColumnConstraint)):
+                        self.add_index(t, [name], unique=True)
+                cols[name] = Column(item.kind, charset)
+            elif isinstance(item, exp.PrimaryKey):
+                self.add_index(t, _names(item.expressions), unique=True)
+            elif isinstance(item, exp.UniqueColumnConstraint) and isinstance(item.this, exp.Schema):
+                self.add_index(t, _names(item.this.expressions), unique=True)
+            elif isinstance(item, exp.IndexColumnConstraint):
+                self.add_index(t, _names(item.expressions))
+            elif isinstance(item, exp.ForeignKey):
+                # InnoDB creates an index for a foreign key when none exists.
+                self.add_index(t, _names(item.expressions))
+        self.columns[t] = cols
         props = tree.args.get("properties")
         if props:
             for p in props.expressions:
@@ -83,6 +122,12 @@ class ScriptContext:
             self.learn_schema(a)
         elif a.kind == "set":
             self._apply_set(a)
+        elif a.kind == "create_index":
+            self.add_index(a.table, a.index_columns, unique="UNIQUE" in a.stmt.words[:3])
+        elif a.kind == "alter_table":
+            for c in a.clauses:
+                if c.kind in ("add_index", "add_pk"):
+                    self.add_index(a.table, c.index_columns, unique=c.kind == "add_pk" or "UNIQUE" in c.words)
 
     def _apply_set(self, a: Analyzed) -> None:
         for part in split_top_level(a.stmt.tokens[1:]):
@@ -97,3 +142,12 @@ class ScriptContext:
                 self.lock_wait_timeout = int(value)
             elif name == "foreign_key_checks":
                 self.fk_checks_off = value in ("0", "off", "false")
+
+
+def _names(items: list[exp.Expression]) -> list[str]:
+    """Column names of a key definition; DESC and prefix lengths are dropped."""
+    names = []
+    for item in items:
+        col = item.find(exp.Column) or item.find(exp.Identifier) or item
+        names.append(col.name.lower())
+    return names

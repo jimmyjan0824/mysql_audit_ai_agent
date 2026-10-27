@@ -213,3 +213,43 @@ L02 = Rule(
     ),
     check=_check_l02,
 )
+
+
+# -- L03 -------------------------------------------------------------------
+
+# Clauses MySQL 8.0 can apply without touching rows (INSTANT or metadata only).
+_NO_ROW_WORK = _METADATA_ONLY | {"add_column", "drop_column"}
+
+
+def _check_l03(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
+    if a.kind not in ("alter_table", "create_index") or ctx.is_new(a.table) or not ctx.is_large(a.table):
+        return []
+    if a.kind == "alter_table" and {c.kind for c in a.clauses} <= _NO_ROW_WORK:
+        return []
+    rows = ctx.size(a.table)
+    return [finding(
+        "L03", Severity.WARN, a,
+        f"`{a.table}` has about {rows:,} rows; this DDL has to read or rebuild all of them.",
+        "Even an online ALTER runs for a long time, holds undo, and replicas apply it only after "
+        "the primary finishes, so they fall behind by the full duration.",
+        "Run it with gh-ost or pt-online-schema-change, which copy in throttled chunks and pause "
+        "when replicas lag.",
+    )]
+
+
+L03 = Rule(
+    id="L03",
+    title="Row-touching DDL on a large table",
+    severity=Severity.WARN,
+    why=(
+        "ALGORITHM=INPLACE avoids blocking writes, but on a table with millions of rows the "
+        "change still takes minutes to hours. A replica starts the same ALTER only after the "
+        "primary commits it, so replication lag grows by the whole duration. Online schema "
+        "change tools copy the table in small, throttled chunks instead."
+    ),
+    safe_example=(
+        "gh-ost --database=shop --table=orders --alter=\"ADD INDEX idx_created (created_at)\" "
+        "--max-lag-millis=1500 --execute"
+    ),
+    check=_check_l03,
+)

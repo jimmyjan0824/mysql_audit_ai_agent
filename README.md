@@ -7,25 +7,31 @@ Before Claude Code, Cursor or another agent runs a migration, it sends the SQL t
 every risk, the line, what will happen in production, and a safe way to write it.
 The checks are deterministic rules written from DBA experience, not another LLM guess.
 
-> Status: early development (v0.1). Six of the twelve planned rules are in.
+> Status: early development (v0.1). All twelve planned rules are in.
 
 ## Rules
 
-| ID  | Checks | Default |
-| --- | --- | --- |
-| L01 | DDL without explicit `ALGORITHM` / `LOCK`; `ALGORITHM=COPY`, `LOCK=SHARED/EXCLUSIVE` | warn / block |
-| L02 | Column changes that force a table copy: type change, VARCHAR shrink or crossing 255 bytes, ENUM reorder, charset conversion, dropping the PK | block |
-| L04 | DDL without a short `SET SESSION lock_wait_timeout` (metadata-lock pile-up) | warn |
-| L05 | `ADD FOREIGN KEY` while `foreign_key_checks=1` (COPY only) | block |
-| L07 | `DROP` / `TRUNCATE` / `RENAME` of columns, tables, databases | block |
-| L08 | `UPDATE` / `DELETE` without `WHERE`; `LIMIT` without `ORDER BY` | block / warn |
-
-Planned: L03 (large-table DDL needs gh-ost / pt-osc), L06 (replication lag),
-L09 (unbatched backfill), L10 (INT overflow, utf8 vs utf8mb4), L11 (missing index),
-L12 (SQL injection in code snippets).
+| ID  | Checks | Default | Needs |
+| --- | --- | --- | --- |
+| L01 | DDL without explicit `ALGORITHM` / `LOCK`; `ALGORITHM=COPY`, `LOCK=SHARED/EXCLUSIVE` | warn / block | |
+| L02 | Column changes that force a table copy: type change, VARCHAR shrink or crossing 255 bytes, ENUM reorder, charset conversion, dropping the PK | block | schema for exact answers |
+| L03 | Row-touching DDL on a large table: use gh-ost / pt-online-schema-change | warn | stats |
+| L04 | DDL without a short `SET SESSION lock_wait_timeout` (metadata-lock pile-up) | warn | |
+| L05 | `ADD FOREIGN KEY` while `foreign_key_checks=1` (COPY only) | block | |
+| L06 | UPDATE / DELETE / INSERT ... SELECT over a large table in one transaction (replication lag) | warn | stats |
+| L07 | `DROP` / `TRUNCATE` / `RENAME` of columns, tables, databases | block | |
+| L08 | `UPDATE` / `DELETE` without `WHERE`; `LIMIT` without `ORDER BY` | block / warn | |
+| L09 | Backfill not limited to a key range or batch size | warn / info | |
+| L10 | Auto-increment column smaller than BIGINT; `utf8` / `utf8mb3` | warn | |
+| L11 | `WHERE` / `JOIN` on a column that no index starts with | warn | schema |
+| L12 | SQL built by f-strings, template literals, concatenation, `%` / `.format` / `Sprintf` (SQL injection) | block | source code |
 
 Tables created earlier in the same script are treated as empty, so DDL on them is not flagged.
-Pass the current `CREATE TABLE` statements as `schema` to get exact answers for column changes.
+
+- **schema**: the current `CREATE TABLE` statements (`SHOW CREATE TABLE`).
+- **stats**: approximate row counts, `{"orders": 25000000}`, from
+  `SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = DATABASE()`.
+  Tables of 1,000,000 rows or more count as large; under 10,000 as small.
 
 ## Use with an AI agent (MCP)
 
@@ -34,13 +40,15 @@ pip install -e .            # PyPI release comes later
 claude mcp add mysql-audit -- mysql-audit-mcp
 ```
 
-Tools: `review_migration(sql, schema?)`, `explain_rule(rule_id)`, `list_rules()`.
+Tools: `review_migration(sql, schema?, stats?)`, `review_query(sql, schema?, stats?)`,
+`review_code(code)`, `explain_rule(rule_id)`, `list_rules()`.
 
 ## Command line
 
 ```bash
 mysql-audit migrations/20261027_add_index.sql --schema schema.sql
-mysql-audit migration.sql --format json
+mysql-audit migration.sql --stats rows.json --format json
+mysql-audit --code app/models/user.py      # SQL injection check
 ```
 
 Exit code: 0 safe, 1 review, 2 block, so it can gate CI.

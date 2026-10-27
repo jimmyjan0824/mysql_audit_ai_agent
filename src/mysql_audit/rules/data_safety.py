@@ -5,9 +5,10 @@ from __future__ import annotations
 from sqlglot import exp
 
 from ..analysis import Analyzed
-from ..context import ScriptContext
+from ..context import LARGE_TABLE_ROWS, ScriptContext
 from ..models import Finding, Severity
 from .base import Rule, finding
+from .predicates import key_targeted
 
 
 # -- L07 -------------------------------------------------------------------
@@ -117,4 +118,98 @@ L08 = Rule(
     ),
     safe_example="DELETE FROM sessions WHERE expires_at < NOW() ORDER BY id LIMIT 1000;",
     check=_check_l08,
+)
+
+
+# -- L06 and L09 -----------------------------------------------------------
+
+def _write_target(a: Analyzed) -> str | None:
+    tree = a.tree
+    if isinstance(tree, (exp.Update, exp.Delete)) and isinstance(tree.this, exp.Table):
+        return tree.this.name.lower()
+    if isinstance(tree, exp.Insert):
+        table = tree.this.find(exp.Table) if tree.this else None
+        return table.name.lower() if table else None
+    return None
+
+
+def _bulk_write(a: Analyzed, ctx: ScriptContext) -> tuple[str, int | None] | None:
+    """(table, rows) when a write may touch many rows in one transaction."""
+    tree = a.tree
+    if a.kind in ("update", "delete") and isinstance(tree, (exp.Update, exp.Delete)):
+        table = _write_target(a)
+        if not table or not tree.args.get("where") or tree.args.get("limit"):
+            return None  # no WHERE is L08's case; LIMIT means the write is batched
+        if key_targeted(tree, table, ctx):
+            return None
+        return table, ctx.size(table)
+    if a.kind == "insert" and isinstance(tree, exp.Insert) and isinstance(tree.expression, exp.Select):
+        select = tree.expression
+        if select.args.get("limit"):
+            return None
+        sources = [t.name.lower() for t in select.find_all(exp.Table)]
+        sizes = [ctx.size(t) for t in sources if ctx.size(t) is not None]
+        return (sources[0] if sources else "?"), (max(sizes) if sizes else None)
+    return None
+
+
+def _check_l06(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
+    bulk = _bulk_write(a, ctx)
+    if not bulk or bulk[1] is None or bulk[1] < LARGE_TABLE_ROWS:
+        return []
+    table, rows = bulk
+    return [finding(
+        "L06", Severity.WARN, a,
+        f"This write can touch a large part of `{table}` (about {rows:,} rows) in one transaction.",
+        "One huge transaction holds row locks until it commits, builds a large undo log, and "
+        "reaches replicas as one event, so they lag while applying it.",
+        "Loop over primary-key ranges (WHERE id BETWEEN x AND x+999) or use LIMIT 1000 with "
+        "ORDER BY id, commit each batch, and pause when replicas lag.",
+    )]
+
+
+def _check_l09(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
+    bulk = _bulk_write(a, ctx)
+    if not bulk or bulk[1] is not None:
+        return []  # known size: L06 handles large tables, small ones are fine
+    table, _ = bulk
+    severity = Severity.WARN if ctx.knows(table) else Severity.INFO
+    return [finding(
+        "L09", severity, a,
+        f"This write on `{table}` is not limited to a key range or batch size.",
+        "If the table is large, every matching row is changed in one transaction: long row "
+        "locks and replication lag.",
+        "Batch it by primary-key range or LIMIT with ORDER BY id. Pass table row counts as "
+        "stats to get an exact verdict.",
+    )]
+
+
+L06 = Rule(
+    id="L06",
+    title="Large write in a single transaction (replication lag)",
+    severity=Severity.WARN,
+    why=(
+        "A replica applies a transaction only after the primary commits it, as one unit. An "
+        "UPDATE, DELETE or INSERT ... SELECT over millions of rows therefore stalls replicas, "
+        "holds row locks for its whole run and builds a large undo log."
+    ),
+    safe_example=(
+        "-- repeat until 0 rows affected\n"
+        "UPDATE orders SET archived = 1 WHERE created_at < '2024-01-01' AND archived = 0 "
+        "ORDER BY id LIMIT 1000;"
+    ),
+    check=_check_l06,
+)
+
+L09 = Rule(
+    id="L09",
+    title="Backfill that is not batched",
+    severity=Severity.WARN,
+    why=(
+        "Backfills written as one UPDATE look harmless in development, where tables are small. "
+        "In production the same statement can touch millions of rows at once. Without row "
+        "counts this rule cannot tell, so it asks for a batched form or for stats."
+    ),
+    safe_example="UPDATE users SET plan = 'free' WHERE id BETWEEN 1 AND 1000 AND plan IS NULL;",
+    check=_check_l09,
 )
