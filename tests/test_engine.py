@@ -65,5 +65,6 @@ def test_versions_agree():
     root = pathlib.Path(__file__).parent.parent
     server = json.loads((root / "server.json").read_text())
     project = tomllib.loads((root / "pyproject.toml").read_text())["project"]
-    assert project["version"] == mysql_audit.__version__ == server["version"] == server["packages"][0]["version"]
+    bundle = json.loads((root / "mcpb" / "manifest.json").read_text())
+    assert project["version"] == mysql_audit.__version__ == server["version"] == server["packages"][0]["version"] == bundle["version"]
     assert f"mcp-name: {server['name']}" in (root / "README.md").read_text()

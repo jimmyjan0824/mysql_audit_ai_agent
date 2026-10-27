@@ -19,6 +19,16 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest -q
 
+  mcpb:
+    # The release attaches this bundle; build it on every PR so a broken manifest shows up early.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: ./scripts/build_mcpb.sh
+
   mysql:
     # Checks every rule's judgment against a real server (tests/test_mysql_oracle.py).
     runs-on: ubuntu-latest

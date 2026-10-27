@@ -56,6 +56,9 @@ claude mcp add mysql-audit -- uvx mysql-audit-ai-agent
 }
 ```
 
+**Claude Desktop, one click**: download `mysql-audit.mcpb` from the
+[latest release](https://github.com/jimmyjan0824/mysql_audit_ai_agent/releases/latest) and open it.
+
 Tools: `review_migration(sql, schema?, stats?)`, `review_query(sql, schema?, stats?)`,
 `review_code(code)`, `explain_rule(rule_id)`, `list_rules()`.
 
