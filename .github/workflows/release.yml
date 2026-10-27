@@ -1,0 +1,59 @@
+name: Release
+
+# Push a tag like v0.1.0 (matching the version in pyproject.toml and server.json)
+# to publish the package to PyPI and the server to the official MCP Registry.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI trusted publishing
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Check the tag matches every version field
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          python - "$tag" <<'PY'
+          import json, sys, tomllib
+          tag = sys.argv[1]
+          versions = {
+              "pyproject.toml": tomllib.load(open("pyproject.toml", "rb"))["project"]["version"],
+              "server.json": json.load(open("server.json"))["version"],
+              "server.json package": json.load(open("server.json"))["packages"][0]["version"],
+          }
+          bad = {k: v for k, v in versions.items() if v != tag}
+          sys.exit(f"tag v{tag} does not match {bad}" if bad else 0)
+          PY
+      - run: pip install -e ".[dev]" build
+      - run: pytest -q
+      - run: python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  mcp-registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # MCP Registry login via GitHub OIDC
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mcp-publisher
+        run: curl -sSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+      - name: Wait for the PyPI version to be visible
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            curl -sf "https://pypi.org/pypi/mysql-audit-ai-agent/$version/json" > /dev/null && exit 0
+            sleep 10
+          done
+          exit 1
+      - run: ./mcp-publisher login github-oidc
+      - run: ./mcp-publisher publish

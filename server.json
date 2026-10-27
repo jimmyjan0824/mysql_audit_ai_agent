@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.jimmyjan0824/mysql-audit",
+  "title": "MySQL Audit",
+  "description": "MySQL migration and query safety review for AI agents: locks, table copies, data loss, injection.",
+  "repository": {
+    "url": "https://github.com/jimmyjan0824/mysql_audit_ai_agent",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mysql-audit-ai-agent",
+      "version": "0.1.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

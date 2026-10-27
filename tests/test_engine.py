@@ -51,3 +51,19 @@ def test_backticks_lowercase_and_comments():
     sql = "-- widen id\nset session lock_wait_timeout = 5;\nalter table `shop`.`Users` modify `age` bigint, algorithm=inplace, lock=none;"
     rules = [(f.rule_id, f.severity.value, f.line) for f in review(sql, schema=SCHEMA).findings]
     assert rules == [("L02", "block", 3)]
+
+
+def test_versions_agree():
+    import pathlib
+
+    import pytest
+
+    import mysql_audit
+
+    tomllib = pytest.importorskip("tomllib")  # Python 3.11+
+
+    root = pathlib.Path(__file__).parent.parent
+    server = json.loads((root / "server.json").read_text())
+    project = tomllib.loads((root / "pyproject.toml").read_text())["project"]
+    assert project["version"] == mysql_audit.__version__ == server["version"] == server["packages"][0]["version"]
+    assert f"mcp-name: {server['name']}" in (root / "README.md").read_text()
