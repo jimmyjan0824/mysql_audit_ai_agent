@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "mysql-audit",
   "display_name": "MySQL Audit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MySQL migration and query safety review for AI agents: locks, table copies, data loss, injection.",
   "long_description": "Reviews MySQL DDL, migration scripts, queries and application code before they run. Flags table copies and write locks (Online DDL ALGORITHM/LOCK), metadata-lock stalls, foreign keys added with checks on, data loss from DROP/RENAME, unbatched backfills, queries without a usable index, integer overflow and SQL built by string concatenation. Each finding comes with the impact and a safe rewrite. Runs locally; your SQL never leaves your machine.",
   "author": {
