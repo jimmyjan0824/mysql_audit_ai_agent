@@ -1,0 +1,55 @@
+name: Wrong result (誤判回報)
+description: The tool flagged something safe, missed something dangerous, or gave wrong advice. 工具判斷錯誤、漏判或建議不正確。
+title: "[wrong result] "
+labels: ["wrong-result"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! A concrete example is the most useful thing you can send. Rename tables and columns if the real names are private.
+        謝謝！具體的 SQL 範例最有幫助。若名稱不便公開，請先改成假的表名、欄位名。
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What went wrong / 哪一種錯誤
+      options:
+        - Flagged, but actually safe (誤報：其實安全)
+        - Not flagged, but actually dangerous (漏報：其實危險)
+        - Right problem, wrong severity (等級不對)
+        - Advice / fix is wrong or impractical (建議做法不對或不可行)
+    validations:
+      required: true
+  - type: input
+    id: rule
+    attributes:
+      label: Rule id / 規則編號
+      placeholder: e.g. L02
+  - type: textarea
+    id: sql
+    attributes:
+      label: SQL that was reviewed / 被審查的 SQL
+      render: sql
+    validations:
+      required: true
+  - type: textarea
+    id: schema
+    attributes:
+      label: Table definition (SHOW CREATE TABLE) and approximate row count / 表結構與大約筆數
+      render: sql
+  - type: textarea
+    id: output
+    attributes:
+      label: What the tool said / 工具的輸出
+      render: text
+  - type: textarea
+    id: expected
+    attributes:
+      label: What actually happens, and how you know / 實際上會怎樣、依據是什麼
+      description: e.g. "ran it on 8.0.36 with ALGORITHM=INPLACE, LOCK=NONE and it succeeded", or a link to the MySQL manual.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MySQL version and flavor / MySQL 版本
+      placeholder: e.g. MySQL 8.0.36, Aurora MySQL 3, Percona 8.4

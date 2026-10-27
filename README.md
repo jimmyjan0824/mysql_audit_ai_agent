@@ -9,7 +9,7 @@ Before Claude Code, Cursor or another agent runs a migration, it sends the SQL t
 every risk, the line, what will happen in production, and a safe way to write it.
 The checks are deterministic rules written from DBA experience, not another LLM guess.
 
-> Status: early development (v0.1). All twelve planned rules are in.
+> Status: beta. All twelve rules are checked against real MySQL 8.0 and 8.4 in CI. DBAs: try the [trial kit](trial/README.md) and [report wrong results](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml).
 
 ## Rules
 

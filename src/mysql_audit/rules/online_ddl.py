@@ -235,10 +235,35 @@ L02 = Rule(
 _NO_ROW_WORK = _METADATA_ONLY | {"add_column", "drop_column"}
 
 
+_METADATA_ONLY_CHANGES = {
+    "VARCHAR grows within the same length-prefix size",
+    "ENUM members appended at the end",
+    "SET members appended at the end",
+}
+
+
+def _metadata_only_change(a: Analyzed, ctx: ScriptContext, c: AlterClause) -> bool:
+    """MODIFY / CHANGE that only edits the data dictionary: a VARCHAR growing within its
+    length prefix or ENUM/SET members appended, with nullability unchanged."""
+    old = ctx.column(a.table, c.column)
+    new_type = _build_type(c.type_sql)
+    if old is None or new_type is None:
+        return False
+    not_null = any(w == "NOT" and n == "NULL" for w, n in zip(c.words, c.words[1:]))
+    if old.nullable == not_null:
+        return False  # NULL <-> NOT NULL rewrites every row
+    new_cs = c.charset or ctx.charset_of(a.table, old)
+    verdict, reason = classify_type_change(old, new_type, ctx.charset_of(a.table, old), new_cs)
+    return verdict == "online" and reason in _METADATA_ONLY_CHANGES
+
+
 def _check_l03(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
     if a.kind not in ("alter_table", "create_index") or ctx.is_new(a.table) or not ctx.is_large(a.table):
         return []
-    if a.kind == "alter_table" and {c.kind for c in a.clauses} <= _NO_ROW_WORK:
+    if a.kind == "alter_table" and all(
+        c.kind in _NO_ROW_WORK or (c.kind in ("modify", "change") and _metadata_only_change(a, ctx, c))
+        for c in a.clauses
+    ):
         return []
     rows = ctx.size(a.table)
     return [finding(
