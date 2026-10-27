@@ -19,6 +19,21 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest -q
 
+  action:
+    # Runs the GitHub Action from this checkout against a migration that must fail the check.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: audit
+        uses: ./
+        continue-on-error: true
+        with:
+          paths: tests/action_fixture/*.sql
+          changed-only: "false"
+          comment: "false"
+      - name: The blocking migration failed the check
+        run: test "${{ steps.audit.outcome }}" = failure
+
   mcpb:
     # The release attaches this bundle; build it on every PR so a broken manifest shows up early.
     runs-on: ubuntu-latest
