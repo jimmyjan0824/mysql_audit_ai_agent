@@ -33,6 +33,11 @@ class AlterClause:
     new_column: str | None = None   # CHANGE / RENAME COLUMN target name
     type_sql: str | None = None     # MODIFY / CHANGE new type, as written
     charset: str | None = None      # MODIFY / CHANGE / CONVERT charset, if given
+    index_columns: list[str] = field(default_factory=list)  # ADD INDEX / PRIMARY KEY columns
+
+    @property
+    def words(self) -> list[str]:
+        return [t.text.upper() for t in self.tokens]
 
 
 @dataclass
@@ -45,6 +50,7 @@ class Analyzed:
     lock: str | None = None
     temporary: bool = False
     tree: exp.Expression | None = None
+    index_columns: list[str] = field(default_factory=list)  # CREATE INDEX columns
 
     @property
     def table(self) -> str | None:
@@ -75,6 +81,7 @@ def analyze(stmt: Statement) -> Analyzed:
             name, _ = read_table_name(toks, w.index("ON") + 1)
             a = Analyzed(stmt, "create_index", [name] if name else [])
             a.algorithm, a.lock = _options(w)
+            a.index_columns = _key_columns(toks)
             return a
 
     if w[:2] == ["DROP", "INDEX"] and "ON" in w:
@@ -104,6 +111,12 @@ def analyze(stmt: Statement) -> Analyzed:
 
     if w[0] in ("UPDATE", "DELETE"):
         return Analyzed(stmt, w[0].lower(), tree=_parse(stmt))
+
+    if w[0] in ("SELECT", "WITH"):
+        return Analyzed(stmt, "select", tree=_parse(stmt))
+
+    if w[0] in ("INSERT", "REPLACE"):
+        return Analyzed(stmt, "insert", tree=_parse(stmt))
 
     if w[0] == "SET":
         return Analyzed(stmt, "set")
@@ -151,21 +164,23 @@ def _classify(stmt: Statement, part: list[Token]) -> AlterClause:
 
     if head == "ADD":
         if nxt in ("INDEX", "KEY", "UNIQUE", "FULLTEXT", "SPATIAL"):
-            return AlterClause("add_index", part)
+            return AlterClause("add_index", part, index_columns=_key_columns(part))
         if nxt == "PRIMARY":
-            return AlterClause("add_pk", part)
+            return AlterClause("add_pk", part, index_columns=_key_columns(part))
         if nxt == "FOREIGN" or (nxt == "CONSTRAINT" and "FOREIGN" in w):
             return AlterClause("add_fk", part)
         if nxt == "CONSTRAINT":
             if "PRIMARY" in w:
-                return AlterClause("add_pk", part)
+                return AlterClause("add_pk", part, index_columns=_key_columns(part))
             if "UNIQUE" in w:
-                return AlterClause("add_index", part)
+                return AlterClause("add_index", part, index_columns=_key_columns(part))
             return AlterClause("add_check", part)
         if nxt in ("CHECK", "PARTITION"):
             return AlterClause("other", part)
         j = 2 if nxt == "COLUMN" else 1
-        return AlterClause("add_column", part, column=_ident(part, j))
+        clause = AlterClause("add_column", part, column=_ident(part, j))
+        _read_type(stmt, clause, part, j + 1)
+        return clause
 
     if head == "DROP":
         if nxt in ("INDEX", "KEY"):
@@ -242,3 +257,28 @@ def _charset_after(words: list[str]) -> str | None:
             j = i + 3 if i + 3 < len(words) and words[i + 2] == "=" else i + 2
             return words[j].lower()
     return None
+
+
+def _key_columns(tokens: list[Token]) -> list[str]:
+    """Column names inside the first parenthesised key list: (a, b(10) DESC)."""
+    cols: list[str] = []
+    depth = 0
+    expect_name = False
+    for tok in tokens:
+        if tok.token_type == TokenType.L_PAREN:
+            depth += 1
+            if depth == 1:
+                expect_name = True
+            continue
+        if tok.token_type == TokenType.R_PAREN:
+            depth -= 1
+            if depth == 0 and cols:
+                break
+            continue
+        if depth == 1:
+            if tok.token_type == TokenType.COMMA:
+                expect_name = True
+            elif expect_name:
+                cols.append(tok.text.lower())
+                expect_name = False
+    return cols

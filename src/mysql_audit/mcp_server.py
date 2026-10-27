@@ -6,6 +6,7 @@ from mcp.server.mcpserver import MCPServer
 
 from . import __version__
 from .engine import review
+from .engine import review_code as _review_code
 from .rules import RULES
 
 server = MCPServer(
@@ -13,24 +14,49 @@ server = MCPServer(
     version=__version__,
     instructions=(
         "Call review_migration before running any MySQL DDL, migration file, or bulk "
-        "UPDATE/DELETE. If the verdict is 'block', do not run the SQL; rewrite it using each "
-        "finding's fix and review again. If it is 'review', tell the user about the findings."
+        "UPDATE/DELETE, review_query for queries you add to application code, and review_code "
+        "for code that builds SQL. If the verdict is 'block', do not run or commit it; rewrite "
+        "it using each finding's fix and review again. If it is 'review', tell the user about "
+        "the findings. For exact results pass the CREATE TABLE statements as schema and row "
+        "counts from information_schema.tables as stats."
     ),
 )
 
 
 @server.tool()
-def review_migration(sql: str, schema: str | None = None) -> dict:
+def review_migration(sql: str, schema: str | None = None, stats: dict[str, int] | None = None) -> dict:
     """Review MySQL DDL or a migration script for locking, data-loss and replication risks.
 
     Args:
         sql: The SQL to run, one or more statements separated by semicolons.
         schema: Optional CREATE TABLE statements for the tables involved (e.g. from
-            SHOW CREATE TABLE). Makes column-type checks exact.
+            SHOW CREATE TABLE). Makes column-type and index checks exact.
+        stats: Optional approximate row count per table, e.g. {"orders": 25000000}, from
+            SELECT table_name, table_rows FROM information_schema.tables.
 
     Returns a verdict (safe / review / block) and findings with line, impact and fix.
     """
-    return review(sql, schema=schema).to_dict()
+    return review(sql, schema=schema, stats=stats).to_dict()
+
+
+@server.tool()
+def review_query(sql: str, schema: str | None = None, stats: dict[str, int] | None = None) -> dict:
+    """Review queries an application will run (SELECT / UPDATE / DELETE / INSERT) for missing
+    indexes, unbatched writes and unsafe UPDATE/DELETE. Pass schema for index checks.
+
+    Returns a verdict (safe / review / block) and findings with line, impact and fix.
+    """
+    return review(sql, schema=schema, stats=stats).to_dict()
+
+
+@server.tool()
+def review_code(code: str) -> dict:
+    """Check application source code (Python, JS/TS, PHP, Go, Java) for SQL built by string
+    interpolation or concatenation, i.e. SQL injection.
+
+    Returns a verdict (safe / block) and findings with line and the parameterized fix.
+    """
+    return _review_code(code).to_dict()
 
 
 @server.tool()
