@@ -12,6 +12,12 @@ from .base import Rule, finding
 # Clauses that never touch table data, so the ALGORITHM clause adds nothing.
 _METADATA_ONLY = {"option", "rename_table", "rename_index", "alter_column"}
 _INSTANT_FRIENDLY = {"add_column", "drop_column", "option"}
+# Clauses MySQL can always run at least INPLACE without blocking writes: left
+# without ALGORITHM, MySQL still never picks COPY for them.
+_ALWAYS_ONLINE = _METADATA_ONLY | {
+    "add_column", "drop_column", "add_index", "drop_index", "drop_fk",
+}
+_BLOCKING_INDEX = {"FULLTEXT", "SPATIAL"}  # built INPLACE but with LOCK=SHARED
 _INT_TYPES = {
     exp.DataType.Type.TINYINT, exp.DataType.Type.UTINYINT, exp.DataType.Type.SMALLINT,
     exp.DataType.Type.USMALLINT, exp.DataType.Type.MEDIUMINT, exp.DataType.Type.UMEDIUMINT,
@@ -45,6 +51,14 @@ def _check_l01(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
             suggestion = "ALGORITHM=INSTANT (ADD COLUMN on 8.0.12+, DROP COLUMN on 8.0.29+)"
         else:
             suggestion = "ALGORITHM=INPLACE, LOCK=NONE"
+        blocking_index = bool(_BLOCKING_INDEX & set(a.stmt.words))
+        if not blocking_index and (a.kind in ("create_index", "drop_index") or kinds <= _ALWAYS_ONLINE):
+            return [finding(
+                "L01", Severity.INFO, a,
+                f"No ALGORITHM is given for DDL on `{a.table}`; MySQL will pick an online algorithm here.",
+                "None expected: these operations never fall back to COPY, though INPLACE may still rebuild the table.",
+                f"Add {suggestion} anyway, so a reviewer sees the intended algorithm and MySQL errors out if it differs.",
+            )]
         return [finding(
             "L01", Severity.WARN, a,
             f"No ALGORITHM is given for DDL on `{a.table}`, so MySQL may silently fall back to a table copy.",

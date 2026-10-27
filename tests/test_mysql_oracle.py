@@ -70,6 +70,17 @@ CASES = [
 ]
 
 
+# DDL without ALGORITHM: L01 says "info" exactly when MySQL can run it online.
+L01_CASES = [
+    ("ALTER TABLE users ADD COLUMN note VARCHAR(100)", True),
+    ("ALTER TABLE users DROP COLUMN age", True),
+    ("ALTER TABLE users ADD INDEX idx_email (email)", True),
+    ("ALTER TABLE users ADD COLUMN note INT, ADD INDEX idx_note (note)", True),
+    ("ALTER TABLE users ADD FULLTEXT INDEX ft (name)", False),
+    ("ALTER TABLE users MODIFY age BIGINT", False),
+]
+
+
 def _connect(**kw):
     return pymysql.connect(
         host=os.environ["MYSQL_HOST"],
@@ -119,6 +130,14 @@ def test_rule_matches_mysql(db, setup, alter, rule, online):
     script = "SET SESSION lock_wait_timeout = 5;\n" + (setup + ";\n" if setup else "") + alter + ONLINE
     blocked = [f for f in review(script, schema=SCHEMA).findings if f.rule_id == rule and f.severity.value == "block"]
     assert bool(blocked) is (not online)
+
+
+@pytest.mark.parametrize("alter,online", L01_CASES)
+def test_l01_matches_mysql(db, alter, online):
+    assert _mysql_runs_online(db, "", alter) is online, "case expectation is wrong for this MySQL version"
+
+    l01 = [f.severity.value for f in review("SET SESSION lock_wait_timeout = 5;\n" + alter, schema=SCHEMA).findings if f.rule_id == "L01"]
+    assert l01 == (["info"] if online else ["warn"])
 
 
 def test_metadata_lock_wait_times_out(db):

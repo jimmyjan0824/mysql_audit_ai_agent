@@ -33,9 +33,10 @@ def review(sql: str, schema: str | None = None, stats: dict[str, int] | None = N
     else:
         report.notes.append("No table stats given: large-table rules (L03, L06) are skipped.")
 
-    for stmt in split_statements(sql):
+    analyzed = [analyze(stmt) for stmt in split_statements(sql)]
+    ctx.recreated = {a.table for a in analyzed if a.kind in ("create_table", "create_view") and a.table}
+    for a in analyzed:
         report.statements += 1
-        a = analyze(stmt)
         for rule in RULES.values():
             report.findings.extend(rule.check(a, ctx))
         ctx.update(a)

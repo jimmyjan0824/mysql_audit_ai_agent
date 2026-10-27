@@ -14,3 +14,24 @@ def test_line_numbers():
 
 def test_empty_script():
     assert split_statements("  -- nothing\n") == []
+
+
+def test_delimiter_blocks_keep_routines_whole():
+    sql = (
+        "ALTER TABLE a ADD COLUMN x INT;\n"
+        "DELIMITER ;;\n"
+        "CREATE PROCEDURE p() BEGIN\n  UPDATE a SET x = 1;\n  DELETE FROM a;\nEND;;\n"
+        "DELIMITER ;\n"
+        "CALL p();\n"
+    )
+    stmts = split_statements(sql)
+    assert [s.words[0] for s in stmts] == ["ALTER", "CREATE", "CALL"]
+    assert [s.line for s in stmts] == [1, 3, 8]
+    assert stmts[1].sql.endswith("END")
+
+
+def test_routine_body_is_not_reviewed():
+    from mysql_audit import review
+
+    sql = "DELIMITER $$\nCREATE PROCEDURE p() BEGIN DELETE FROM a; END$$\nDELIMITER ;\n"
+    assert [f.rule_id for f in review(sql).findings] == []

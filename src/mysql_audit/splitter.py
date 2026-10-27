@@ -1,12 +1,12 @@
 """Split a SQL script into statements, keeping line numbers and tokens.
 
 The sqlglot MySQL tokenizer is used so that semicolons inside strings and
-comments do not split a statement. DELIMITER blocks (stored routines) are
-not supported yet.
+comments do not split a statement.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from sqlglot.dialects.mysql import MySQL
@@ -53,7 +53,49 @@ class Statement:
         return [t.text.upper() for t in self.tokens]
 
 
+_DELIMITER_RE = re.compile(r"^[ \t]*DELIMITER[ \t]+(\S+)[ \t]*$", re.I | re.M)
+
+
 def split_statements(sql: str) -> list[Statement]:
+    """Split a script into statements.
+
+    Supports the mysql client's DELIMITER command: text between
+    `DELIMITER ;;` and `DELIMITER ;` is split on the custom delimiter, so a
+    stored routine stays one statement. Routine bodies are not analysed.
+    """
+    plain = list(sql)
+    routines: list[tuple[int, str]] = []  # (offset, text) of custom-delimiter statements
+    delimiter = ";"
+    region_start = 0
+    for m in list(_DELIMITER_RE.finditer(sql)) + [None]:
+        region_end = m.start() if m else len(sql)
+        if delimiter != ";":
+            pos = region_start
+            for piece in sql[region_start:region_end].split(delimiter):
+                if piece.strip():
+                    routines.append((pos, piece))
+                pos += len(piece) + len(delimiter)
+            _blank(plain, region_start, region_end)
+        if m:
+            _blank(plain, m.start(), m.end())
+            delimiter = m.group(1)
+            region_start = m.end()
+
+    statements = _split_plain("".join(plain))
+    for offset, piece in routines:
+        statements.extend(_routine(sql, offset, piece))
+    statements.sort(key=lambda st: st.offset)
+    return statements
+
+
+def _blank(chars: list[str], start: int, end: int) -> None:
+    """Hide a span from the tokenizer, keeping offsets and line numbers."""
+    for i in range(start, end):
+        if chars[i] != "\n":
+            chars[i] = " "
+
+
+def _split_plain(sql: str) -> list[Statement]:
     tokens = _split_keywords(_TOKENIZER.tokenize(sql))
     statements: list[Statement] = []
     current: list[Token] = []
@@ -66,6 +108,20 @@ def split_statements(sql: str) -> list[Statement]:
         else:
             current.append(tok)
     return statements
+
+
+def _routine(sql: str, offset: int, piece: str) -> list[Statement]:
+    try:
+        raw = _TOKENIZER.tokenize(piece)
+    except Exception:
+        return []
+    if not raw:
+        return []
+    line0 = sql.count("\n", 0, offset)
+    tokens = [Token(t.token_type, t.text, t.line + line0, t.col, t.start + offset, t.end + offset) for t in raw]
+    tokens = _split_keywords(tokens)
+    text = sql[tokens[0].start : tokens[-1].end + 1]
+    return [Statement(sql=text, line=tokens[0].line, tokens=tokens, offset=tokens[0].start)]
 
 
 def split_top_level(tokens: list[Token]) -> list[list[Token]]:

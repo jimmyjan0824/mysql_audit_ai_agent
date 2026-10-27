@@ -34,6 +34,7 @@ class ScriptContext:
     columns: dict[str, dict[str, Column]] = field(default_factory=dict)
     table_charset: dict[str, str] = field(default_factory=dict)
     created_tables: set[str] = field(default_factory=set)
+    recreated: set[str] = field(default_factory=set)  # tables a CREATE TABLE in the script defines
     indexes: dict[str, list[list[str]]] = field(default_factory=dict)  # column lists, leftmost first
     uniques: dict[str, list[list[str]]] = field(default_factory=dict)  # primary key and unique keys
     rows: dict[str, int] = field(default_factory=dict)                 # approximate row counts
