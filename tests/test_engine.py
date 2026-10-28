@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from mysql_audit import review
 from mysql_audit.cli import main
 from mysql_audit import mcp_server
@@ -68,3 +70,16 @@ def test_versions_agree():
     bundle = json.loads((root / "mcpb" / "manifest.json").read_text())
     assert project["version"] == mysql_audit.__version__ == server["version"] == server["packages"][0]["version"] == bundle["version"]
     assert f"mcp-name: {server['name']}" in (root / "README.md").read_text()
+
+
+def test_version_flag(capsys, monkeypatch):
+    import mysql_audit
+    from mysql_audit import cli, mcp_server
+
+    with pytest.raises(SystemExit) as exit_:
+        cli.main(["--version"])
+    assert exit_.value.code == 0
+    assert capsys.readouterr().out.strip() == f"mysql-audit {mysql_audit.__version__}"
+    monkeypatch.setattr("sys.argv", ["mysql-audit-ai-agent", "--version"])
+    mcp_server.main()  # prints and returns instead of starting the server
+    assert capsys.readouterr().out.strip() == f"mysql-audit-ai-agent {mysql_audit.__version__}"

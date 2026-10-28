@@ -11,6 +11,7 @@ import json
 import sys
 from pathlib import Path
 
+from . import __version__
 from .config import load_config, parse_gb
 from .engine import review, review_code
 from .preflight import preflight_sql
@@ -32,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--free-disk-gb", help="free space on the server's data volume, in GB (enables L17)")
     parser.add_argument("--config", help="settings file (default: the nearest .mysql-audit.toml)")
     parser.add_argument("--format", choices=("text", "json"), default="text")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
 
     try:
