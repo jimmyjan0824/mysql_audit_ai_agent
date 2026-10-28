@@ -11,6 +11,34 @@ The checks are deterministic rules written from DBA experience, not another LLM 
 
 > Status: beta. All twelve rules are checked against real MySQL 8.0 and 8.4 in CI. DBAs: try the [trial kit](trial/README.md) and [report wrong results](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml).
 
+## Try it: DBA trial kit
+
+[`trial/`](trial/README.md) has 19 example migrations and 2 code samples on a small shop schema
+(`orders` 25M rows, `users` 2.4M), each marked with the verdict it should get. Every example
+also runs on MySQL 8.0 and 8.4 in CI. The guide is in Traditional Chinese.
+
+```bash
+git clone https://github.com/jimmyjan0824/mysql_audit_ai_agent
+cd mysql_audit_ai_agent
+python3 -m venv .venv && source .venv/bin/activate
+pip install mysql-audit-ai-agent
+python trial/run.py        # expected vs actual verdict for each example
+python trial/run.py -v     # plus every finding
+```
+
+With [uv](https://docs.astral.sh/uv/) instead: `uv run --no-project --with mysql-audit-ai-agent python trial/run.py`.
+
+To review your own migrations, export the schema and row counts once:
+
+```bash
+mysqldump --no-data --skip-comments your_db > schema.sql
+mysql -N -e "SELECT JSON_OBJECTAGG(table_name, table_rows) FROM information_schema.tables WHERE table_schema = 'your_db' AND table_type = 'BASE TABLE'" > stats.json
+mysql-audit your_migration.sql --schema schema.sql --stats stats.json
+```
+
+Found a wrong result (a false alarm, a missed risk, or a fix that doesn't work)? Please use the
+[report form](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml).
+
 ## Rules
 
 | ID  | Checks | Default | Needs |
@@ -125,6 +153,9 @@ MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root pytest tests/test_mysql_oracle.py
 給 AI 編碼代理用的 MySQL 變更安全審查。代理在執行 migration 前呼叫 `review_migration`，
 取得 `safe` / `review` / `block` 判定，以及每個風險的行號、線上影響與安全寫法。
 規則由 DBA 經驗寫成，結果可重複驗證。
+
+DBA 想試用的話，請看 [試用包說明](trial/README.md)：裡面有 19 個可直接執行的範例 migration、
+用自己資料庫的 schema 與筆數檢查的方式，以及 [回報誤判的表單](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml)。
 
 ## License
 
