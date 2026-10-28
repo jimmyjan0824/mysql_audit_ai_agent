@@ -164,7 +164,7 @@ In our [agent evaluation](docs/agent-eval.md) Claude Code called the tool on its
 
 ```text
 mysql-audit [files ...] [--schema FILE] [--stats FILE] [--mysql-version VERSION]
-            [--free-disk-gb GB] [--config FILE] [--format text|json]
+            [--free-disk-gb GB] [--config FILE] [--format text|json] [--color auto|always|never]
             [--code] [--preflight] [--version]
 ```
 
@@ -177,6 +177,7 @@ mysql-audit [files ...] [--schema FILE] [--stats FILE] [--mysql-version VERSION]
 | `--free-disk-gb GB` | Free space on the server's data volume; with byte sizes enables L17 |
 | `--config FILE` | Settings file (default: the nearest `.mysql-audit.toml`) |
 | `--format json` | Machine-readable output |
+| `--color auto\|always\|never` | Color text output: `[block]` lines red, `[warn]` lines yellow, the verdict red / yellow / green. `auto` (default) colors only on a terminal and honors `NO_COLOR` / `FORCE_COLOR` |
 | `--code` | The files are application code: check for SQL injection |
 | `--preflight` | Print pre-deploy SQL for these migrations instead of reviewing them |
 | `--version` | Print the installed version |
