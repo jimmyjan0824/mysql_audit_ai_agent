@@ -201,7 +201,9 @@ def _classify(stmt: Statement, part: list[Token]) -> AlterClause:
             return AlterClause("drop_pk", part)
         if nxt == "FOREIGN":
             return AlterClause("drop_fk", part)
-        if nxt in ("CONSTRAINT", "CHECK", "PARTITION"):
+        if nxt == "PARTITION":
+            return AlterClause("drop_partition", part)
+        if nxt in ("CONSTRAINT", "CHECK"):
             return AlterClause("other", part)
         j = 2 if nxt == "COLUMN" else 1
         return AlterClause("drop_column", part, column=_ident(part, j))
@@ -224,6 +226,9 @@ def _classify(stmt: Statement, part: list[Token]) -> AlterClause:
         if nxt in ("INDEX", "KEY"):
             return AlterClause("rename_index", part)
         return AlterClause("rename_table", part)
+
+    if head == "TRUNCATE" and nxt == "PARTITION":
+        return AlterClause("truncate_partition", part)
 
     if head == "CONVERT":
         clause = AlterClause("convert_charset", part)

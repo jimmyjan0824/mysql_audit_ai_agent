@@ -42,7 +42,38 @@ def _destructive_actions(a: Analyzed, ctx: ScriptContext) -> list[str]:
     return actions
 
 
+def _check_partitions(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
+    if a.kind != "alter_table" or ctx.is_new(a.table):
+        return []
+    out = []
+    for i, c in enumerate(a.clauses):
+        if c.kind not in ("drop_partition", "truncate_partition"):
+            continue
+        # DROP PARTITION p1, p2 is split at the comma: the later names arrive as bare clauses.
+        names = [t.text for t in c.tokens[2:]]
+        for rest in a.clauses[i + 1:]:
+            if rest.kind != "other" or len(rest.tokens) != 1:
+                break
+            names.append(rest.tokens[0].text)
+        verb = "drops" if c.kind == "drop_partition" else "empties"
+        plural = "partitions" if len(names) > 1 else "partition"
+        listed = ", ".join(f"`{n}`" for n in names)
+        out.append(finding(
+            "L07", Severity.BLOCK, a,
+            f"This statement {verb} {plural} {listed} of `{a.table}` and deletes every row in {'them' if len(names) > 1 else 'it'}.",
+            "The rows are gone at once, with no WHERE clause to check and no undo. Partition "
+            "names say nothing about what is inside, so a wrong name deletes live data.",
+            "Check the partition's boundaries and row count first (information_schema.partitions), "
+            "then move it out with ALTER TABLE ... EXCHANGE PARTITION into an archive table and "
+            "keep that table until the data is confirmed unneeded.",
+        ))
+    return out
+
+
 def _check_l07(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
+    partitions = _check_partitions(a, ctx)
+    if partitions:
+        return partitions
     actions = _destructive_actions(a, ctx)
     if not actions:
         return []
@@ -67,12 +98,13 @@ def _check_l07(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
 
 L07 = Rule(
     id="L07",
-    title="Dropping or renaming a column, table or database",
+    title="Dropping or renaming a column, table, partition or database",
     severity=Severity.BLOCK,
     why=(
         "DROP, TRUNCATE and RENAME take effect immediately, while application servers still run "
         "the previous release. That code keeps querying the old name and fails. Dropped data "
-        "cannot be restored by rolling back the deploy."
+        "cannot be restored by rolling back the deploy. DROP PARTITION and TRUNCATE PARTITION "
+        "delete every row in the partition at once."
     ),
     safe_example=(
         "-- release 1: stop reading and writing users.legacy_flag in the application\n"
