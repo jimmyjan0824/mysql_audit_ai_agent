@@ -40,7 +40,7 @@ def test_mcp_tools():
     assert mcp_server.review_migration("DELETE FROM t")["verdict"] == "block"
     assert mcp_server.explain_rule("l02")["rule_id"] == "L02"
     assert "error" in mcp_server.explain_rule("L99")
-    assert {r["rule_id"] for r in mcp_server.list_rules()} == {f"L{i:02d}" for i in range(1, 17)}
+    assert {r["rule_id"] for r in mcp_server.list_rules()} == {f"L{i:02d}" for i in range(1, 18)}
     assert mcp_server.review_query("SELECT * FROM t WHERE a = 1")["verdict"] == "safe"
     assert mcp_server.review_code('q = f"SELECT * FROM t WHERE id = {x}"')["verdict"] == "block"
 
