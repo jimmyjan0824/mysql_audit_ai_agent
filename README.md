@@ -9,7 +9,7 @@ Before Claude Code, Cursor or another agent runs a migration, it sends the SQL t
 every risk, the line, what will happen in production, and a safe way to write it.
 The checks are deterministic rules written from DBA experience, not another LLM guess.
 
-> Status: beta. All twelve rules are checked against real MySQL 8.0 and 8.4 in CI. DBAs: try the [trial kit](trial/README.md) and [report wrong results](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml).
+> Status: beta. All sixteen rules are checked against real MySQL 8.0 and 8.4 in CI. DBAs: try the [trial kit](trial/README.md) and [report wrong results](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml).
 
 ## Rules
 
@@ -21,12 +21,16 @@ The checks are deterministic rules written from DBA experience, not another LLM 
 | L04 | DDL without a short `SET SESSION lock_wait_timeout` (metadata-lock pile-up) | warn | |
 | L05 | `ADD FOREIGN KEY` while `foreign_key_checks=1` (COPY only) | block | |
 | L06 | UPDATE / DELETE / INSERT ... SELECT over a large table in one transaction (replication lag) | warn | stats |
-| L07 | `DROP` / `TRUNCATE` / `RENAME` of columns, tables, databases | block | |
+| L07 | `DROP` / `TRUNCATE` / `RENAME` of columns, tables, databases; `DROP` / `TRUNCATE PARTITION` | block | |
 | L08 | `UPDATE` / `DELETE` without `WHERE`; `LIMIT` without `ORDER BY` | block / warn | |
 | L09 | Backfill not limited to a key range or batch size | warn / info | |
 | L10 | Auto-increment column smaller than BIGINT; `utf8` / `utf8mb3` | warn | |
 | L11 | `WHERE` / `JOIN` on a column that no index starts with | warn | schema |
 | L12 | SQL built by f-strings, template literals, concatenation, `%` / `.format` / `Sprintf` (SQL injection) | block | source code |
+| L13 | `SET sql_log_bin = 0` (replicas never get the change); `SET GLOBAL` / `SET PERSIST` | block / warn | |
+| L14 | `ADD UNIQUE` / `ADD PRIMARY KEY` on an existing table: fails on duplicates, gh-ost / pt-osc drop them silently | warn | |
+| L15 | `CREATE TABLE` without a primary key, or with an engine other than InnoDB | warn | |
+| L16 | `GRANT ALL ON *.*`; grants to `'%'` or `WITH GRANT OPTION`; `DROP USER` | block / warn | |
 
 Tables created earlier in the same script are treated as empty, so DDL on them is not flagged.
 

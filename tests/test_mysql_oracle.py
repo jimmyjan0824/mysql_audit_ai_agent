@@ -88,14 +88,14 @@ L01_CASES = [
 
 
 def _connect(**kw):
-    return pymysql.connect(
-        host=os.environ["MYSQL_HOST"],
-        port=int(os.environ.get("MYSQL_PORT", "3306")),
-        user=os.environ.get("MYSQL_USER", "root"),
-        password=os.environ.get("MYSQL_PASSWORD", ""),
-        autocommit=True,
-        **kw,
-    )
+    args = {
+        "host": os.environ["MYSQL_HOST"],
+        "port": int(os.environ.get("MYSQL_PORT", "3306")),
+        "user": os.environ.get("MYSQL_USER", "root"),
+        "password": os.environ.get("MYSQL_PASSWORD", ""),
+        "autocommit": True,
+    }
+    return pymysql.connect(**{**args, **kw})
 
 
 def _run(cur, script: str) -> None:
@@ -180,3 +180,128 @@ def test_trial_migration_runs_on_mysql(path):
                 cur.execute(stmt.sql)
     finally:
         conn.close()
+
+
+# -- L13-L16: what the rules warn about really happens on the server --------
+
+def _rules(sql: str, schema: str = SCHEMA) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for f in review(sql, schema=schema).findings:
+        out.setdefault(f.rule_id, []).append(f.severity.value)
+    return out
+
+
+def _binlog_position(cur):
+    for query in ("SHOW BINARY LOG STATUS", "SHOW MASTER STATUS"):  # 8.4 / 8.0
+        try:
+            cur.execute(query)
+        except pymysql.MySQLError:
+            continue
+        row = cur.fetchone()
+        return (row[0], row[1]) if row else None
+    return None
+
+
+def test_sql_log_bin_off_keeps_writes_out_of_the_binlog(db):
+    """L13: with sql_log_bin = 0 a write leaves the binlog untouched, so replicas never see it."""
+    with db.cursor() as cur:
+        if _binlog_position(cur) is None:
+            pytest.skip("binary logging is off on this server")
+        cur.execute("SET SESSION sql_log_bin = 0")
+        before = _binlog_position(cur)
+        cur.execute("INSERT INTO plain VALUES (10, 'hidden')")
+        assert _binlog_position(cur) == before
+        cur.execute("SET SESSION sql_log_bin = 1")
+        cur.execute("INSERT INTO plain VALUES (11, 'logged')")
+        assert _binlog_position(cur) != before
+    assert _rules("SET SESSION sql_log_bin = 0") == {"L13": ["block"]}
+
+
+def test_set_global_reaches_other_connections(db):
+    """L13: SET GLOBAL changes the setting for every new connection, not just this script."""
+    with db.cursor() as cur:
+        cur.execute("SELECT @@GLOBAL.max_connections")
+        (original,) = cur.fetchone()
+        try:
+            cur.execute(f"SET GLOBAL max_connections = {original + 1}")
+            other = _connect()
+            with other.cursor() as cur2:
+                cur2.execute("SELECT @@max_connections")
+                assert cur2.fetchone()[0] == original + 1
+            other.close()
+        finally:
+            cur.execute(f"SET GLOBAL max_connections = {original}")
+    assert _rules("SET GLOBAL max_connections = 500") == {"L13": ["warn"]}
+
+
+PARTS = (
+    "CREATE TABLE parts (id INT NOT NULL PRIMARY KEY) PARTITION BY RANGE (id) "
+    "(PARTITION p0 VALUES LESS THAN (10), PARTITION p1 VALUES LESS THAN MAXVALUE)"
+)
+
+
+def test_partition_drop_and_truncate_delete_rows(db):
+    """L07: TRUNCATE / DROP PARTITION delete every row in the partition, with no WHERE."""
+    with db.cursor() as cur:
+        cur.execute(PARTS)
+        cur.execute("INSERT INTO parts VALUES (1), (2), (20)")
+        cur.execute("ALTER TABLE parts TRUNCATE PARTITION p0")
+        cur.execute("SELECT COUNT(*) FROM parts")
+        assert cur.fetchone()[0] == 1
+        cur.execute("ALTER TABLE parts DROP PARTITION p1")
+        cur.execute("SELECT COUNT(*) FROM parts")
+        assert cur.fetchone()[0] == 0
+    schema = SCHEMA + PARTS + ";"
+    assert _rules("ALTER TABLE parts TRUNCATE PARTITION p0", schema)["L07"] == ["block"]
+    assert _rules("ALTER TABLE parts DROP PARTITION p1", schema)["L07"] == ["block"]
+
+
+def test_unique_index_fails_on_existing_duplicates(db):
+    """L14: a unique key cannot be added while duplicates exist (ER_DUP_ENTRY)."""
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO plain VALUES (2, 'n')")  # row 1 already has note 'n'
+        with pytest.raises(pymysql.MySQLError) as err:
+            cur.execute("ALTER TABLE plain ADD UNIQUE INDEX uq_note (note)" + ONLINE)
+        assert err.value.args[0] == 1062
+    assert _rules("ALTER TABLE plain ADD UNIQUE INDEX uq_note (note)" + ONLINE)["L14"] == ["warn"]
+
+
+def test_table_without_primary_key_or_innodb(db):
+    """L15: servers that require a primary key refuse the table; MyISAM ignores ROLLBACK."""
+    with db.cursor() as cur:
+        cur.execute("SET SESSION sql_require_primary_key = 1")
+        with pytest.raises(pymysql.MySQLError) as err:
+            cur.execute("CREATE TABLE nopk (a INT)")
+        assert err.value.args[0] == 3750  # ER_TABLE_WITHOUT_PK
+        cur.execute("SET SESSION sql_require_primary_key = 0")
+
+        cur.execute("CREATE TABLE mtab (id INT NOT NULL PRIMARY KEY) ENGINE=MyISAM")
+        cur.execute("START TRANSACTION")
+        cur.execute("INSERT INTO mtab VALUES (1)")
+        cur.execute("ROLLBACK")
+        cur.execute("SELECT COUNT(*) FROM mtab")
+        assert cur.fetchone()[0] == 1  # the rollback did nothing
+    assert _rules("CREATE TABLE nopk (a INT)") == {"L15": ["warn"]}
+    assert _rules("CREATE TABLE mtab (id INT NOT NULL PRIMARY KEY) ENGINE=MyISAM") == {"L15": ["warn"]}
+
+
+def test_grant_all_and_drop_user(db):
+    """L16: GRANT ALL ON *.* to '%' gives the whole server; DROP USER locks the account out at once."""
+    user, password = "mysql_audit_tmp", "Tmp-pass-123"
+    with db.cursor() as cur:
+        cur.execute(f"DROP USER IF EXISTS '{user}'@'%'")
+        cur.execute(f"CREATE USER '{user}'@'%' IDENTIFIED BY '{password}'")
+        try:
+            cur.execute(f"GRANT ALL PRIVILEGES ON *.* TO '{user}'@'%'")
+            cur.execute(f"SHOW GRANTS FOR '{user}'@'%'")
+            assert any("ALL PRIVILEGES ON *.*" in row[0] for row in cur.fetchall())
+            _connect(user=user, password=password).close()  # logs in from any host
+
+            cur.execute(f"DROP USER '{user}'@'%'")
+            with pytest.raises(pymysql.MySQLError) as err:
+                _connect(user=user, password=password)
+            assert err.value.args[0] == 1045  # ER_ACCESS_DENIED_ERROR
+        finally:
+            cur.execute(f"DROP USER IF EXISTS '{user}'@'%'")
+    assert _rules(f"GRANT ALL PRIVILEGES ON *.* TO '{user}'@'%'") == {"L16": ["block"]}
+    assert _rules(f"DROP USER '{user}'@'%'") == {"L16": ["block"]}

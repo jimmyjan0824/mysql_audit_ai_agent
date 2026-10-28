@@ -52,6 +52,10 @@ python trial/run.py -v     # 加上每一條發現的說明
 | 17_int_auto_increment | L10 | review | INT 自增主鍵 21 億會用完 |
 | 18_query_without_index | L11 | review | WHERE 欄位沒有索引 |
 | 19_query_with_index | | safe | |
+| 20_sql_log_bin_off | L13 | block | 關掉 binlog 後的修改不會到從庫，主從從此不一致 |
+| 21_add_unique_index | L14 L03 | review | 已有重複資料會失敗；用 gh-ost / pt-osc 會靜默丟掉重複列 |
+| 22_table_without_primary_key | L15 | review | 沒有主鍵：從庫套用變更要掃全表，gh-ost 也無法使用 |
+| 23_grant_all | L16 | block | 任何位址都能登入、擁有整台伺服器的權限 |
 | code/injection.py | L12 | block | 字串拼接 SQL |
 | code/parameterized.py | | safe | 參數化查詢 |
 
@@ -59,7 +63,7 @@ python trial/run.py -v     # 加上每一條發現的說明
 1. **大表門檻**：100 萬筆以上就建議用 gh-ost / pt-online-schema-change（L03、L06）。您的經驗中門檻是多少？
 2. **lock_wait_timeout 上限 60 秒**（L04）。您平常設多少？
 3. **INT UNSIGNED 自增主鍵只給警告**（L10）。
-4. 有沒有您常見、但這 12 條規則**完全沒涵蓋**的事故類型？
+4. 有沒有您常見、但這 16 條規則**完全沒涵蓋**的事故類型？
 
 ## 3. 用您自己的 migration（5 到 10 分鐘，最有價值）
 

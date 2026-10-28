@@ -11,6 +11,8 @@ L07_POSITIVE = [
     "ALTER TABLE users CHANGE age years INT",
     "ALTER TABLE users RENAME TO members",
     "DROP DATABASE shop",
+    "ALTER TABLE users DROP PARTITION p2020",
+    "ALTER TABLE users TRUNCATE PARTITION p2020, p2021",
 ]
 
 L07_NEGATIVE = [
@@ -19,6 +21,7 @@ L07_NEGATIVE = [
     "ALTER TABLE users CHANGE age age BIGINT",
     "ALTER TABLE users DROP INDEX idx_email",
     "ALTER TABLE users ADD COLUMN note TEXT",
+    "CREATE TABLE t2 (id INT PRIMARY KEY) PARTITION BY HASH (id) PARTITIONS 2; ALTER TABLE t2 TRUNCATE PARTITION p0",
 ]
 
 
@@ -61,3 +64,10 @@ def test_l07_table_swap_is_not_destructive(check):
     swap = "CREATE TABLE users_new LIKE users; RENAME TABLE users TO users_old, users_new TO users"
     assert check(swap, "L07") == []
     assert check("RENAME TABLE users TO members, orders TO orders", "L07") == ["block"]
+
+
+def test_l07_names_every_dropped_partition():
+    from mysql_audit import review
+
+    [f] = [f for f in review("ALTER TABLE users DROP PARTITION p2020, p2021").findings if f.rule_id == "L07"]
+    assert "partitions `p2020`, `p2021`" in f.message and "EXCHANGE PARTITION" in f.fix
