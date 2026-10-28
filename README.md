@@ -140,6 +140,20 @@ the MCP server). To upgrade:
 | `uvx` (MCP config) | uvx reuses its cached copy; use `uvx mysql-audit-ai-agent@latest` in the config to check PyPI on every start, or run `uv cache clean mysql-audit-ai-agent` once |
 | GitHub Action | change the `@vX.Y.Z` tag in the workflow to the new release |
 
+**Upgraded, but `mysql-audit` still runs the old version?** (For example,
+`--version` is rejected as an unrecognized argument.) The shell is finding another copy
+first, such as an older `uv tool install` in `~/.local/bin`, or it still remembers the old path:
+
+```bash
+which -a mysql-audit   # every copy on PATH; the first one is what runs
+hash -r                # forget remembered paths (zsh: rehash)
+```
+
+If the first copy is not the one you upgraded, activate that environment
+(`source .venv/bin/activate`), or upgrade or remove the other copy
+(`uv tool upgrade mysql-audit-ai-agent` / `uv tool uninstall mysql-audit-ai-agent`).
+`.venv/bin/mysql-audit --version` checks a venv's copy directly.
+
 ## Pre-deploy checks
 
 The review never connects to your database. What only the live server knows (open
