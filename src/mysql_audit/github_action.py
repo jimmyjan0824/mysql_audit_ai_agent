@@ -3,7 +3,11 @@
 Reads the action inputs from INPUT_* variables, reviews every changed file that
 matches `paths`, then reports three ways: inline annotations on the diff, the
 job summary, and one PR comment that is updated on every push. Fails the check
-when the worst verdict reaches `fail-on`.
+when the worst verdict reaches `fail-on`, unless one of `dba-approvers` has
+approved the pull request at its current commit.
+
+Down migrations (*.down.sql, Flyway U__ files) are not reviewed as changes:
+they count as the rollback of the migration they pair with.
 """
 
 from __future__ import annotations
@@ -19,6 +23,8 @@ from pathlib import Path
 from .config import load_config, parse_gb
 from .engine import review, review_code
 from .models import Report
+from .preflight import preflight_sql
+from .rules.rollback import is_down_file, sibling_rollback
 from .version import parse_version
 
 MARKER = "<!-- mysql-audit -->"
@@ -88,6 +94,20 @@ class GitHub:
                 break
         self.request("POST", f"/issues/{number}/comments", {"body": body})
 
+    def approvers(self, number: int, head_sha: str, allowed: set[str]) -> list[str]:
+        """Allowed users whose latest review approves the pull request at head_sha."""
+        latest: dict[str, dict] = {}
+        for page in range(1, 11):
+            reviews = self.request("GET", f"/pulls/{number}/reviews?per_page=100&page={page}")
+            for r in reviews:
+                login = ((r.get("user") or {}).get("login") or "").lower()
+                if login in allowed and r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+                    latest[login] = r
+            if len(reviews) < 100:
+                break
+        return sorted(login for login, r in latest.items()
+                      if r["state"] == "APPROVED" and r.get("commit_id") == head_sha)
+
 
 # -- report -----------------------------------------------------------------
 
@@ -104,7 +124,16 @@ def annotations(path: str, report: Report) -> list[str]:
     ]
 
 
-def render(results: list[tuple[str, Report]], fail_on: str) -> str:
+_CHECKLIST = [
+    "Runs off-peak, with someone watching",
+    "Backup taken, or rollback ready and tested",
+    "Preflight checks run on the primary just before (SQL below): no rows, replica lag 10 s or less",
+    "DBA approved",
+]
+
+
+def render(results: list[tuple[str, Report]], fail_on: str, preflight: str | None = None,
+           approved_by: list[str] | None = None) -> str:
     worst = max((r.verdict for _, r in results), key=_RANK.__getitem__, default="safe")
     lines = [MARKER, f"## {_ICON[worst]} MySQL Audit: {worst.upper()}", ""]
     if not results:
@@ -126,6 +155,14 @@ def render(results: list[tuple[str, Report]], fail_on: str) -> str:
                 f"  - Impact: {f.impact}",
                 f"  - Fix: {f.fix}",
             ]
+    if worst != "safe":
+        lines += ["", "### Before deploying", ""] + [f"- [ ] {item}" for item in _CHECKLIST]
+        if preflight:
+            lines += ["", "<details><summary>Preflight SQL (run on the primary right before the migration)</summary>",
+                      "", "```sql", preflight.rstrip(), "```", "", "</details>"]
+    if approved_by:
+        lines += ["", "**Approved by " + ", ".join(f"@{u}" for u in approved_by)
+                  + " at this commit**: the check passes despite the findings."]
     notes = sorted({n for _, r in results for n in r.notes})
     if notes:
         lines += ["", "<sub>" + " ".join(notes) + "</sub>"]
@@ -184,8 +221,11 @@ def run(env: dict[str, str] | None = None) -> int:
         if path in skip or (workspace / path).resolve() in cfg.files or not (workspace / path).is_file():
             continue
         if matches(path, paths):
+            if is_down_file(Path(path).name):
+                continue
             report = review((workspace / path).read_text(encoding="utf-8", errors="replace"),
-                            schema=schema, stats=stats, mysql_version=version, free_disk_gb=free_disk)
+                            schema=schema, stats=stats, mysql_version=version, free_disk_gb=free_disk,
+                            has_rollback=sibling_rollback(workspace / path) is not None)
         elif code_paths and matches(path, code_paths):
             report = review_code((workspace / path).read_text(encoding="utf-8", errors="replace"))
         else:
@@ -194,23 +234,36 @@ def run(env: dict[str, str] | None = None) -> int:
         for line in annotations(path, report):
             print(line)
 
-    body = render(results, fail_on)
+    worst = max((_RANK[r.verdict] for _, r in results), default=0)
+    failing = fail_on != "never" and worst >= _RANK[fail_on]
+    pr = event.get("pull_request")
+    approved_by: list[str] = []
+    allowed = {u.lstrip("@").lower() for u in _patterns(_input(env, "dba-approvers"))}
+    if failing and allowed and pr and gh:
+        try:
+            approved_by = gh.approvers(pr["number"], pr["head"]["sha"], allowed)
+        except (urllib.error.HTTPError, KeyError) as e:
+            print(f"::warning::Could not read the pull request's reviews ({e}).")
+
+    migrations = [(workspace / p).read_text(encoding="utf-8", errors="replace")
+                  for p, _ in results if matches(p, paths)]
+    preflight = preflight_sql(";\n".join(migrations), version) if migrations else None
+    body = render(results, fail_on, preflight, approved_by)
     print(body)
     if env.get("GITHUB_STEP_SUMMARY"):
         with open(env["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
             f.write(body)
 
-    pr = event.get("pull_request")
     if pr and gh and _input(env, "comment", "true").lower() == "true" and results:
         try:
             gh.upsert_comment(pr["number"], body)
         except urllib.error.HTTPError as e:  # e.g. read-only token on a fork PR
             print(f"::warning::Could not comment on the pull request ({e.code}); see the job summary instead.")
 
-    worst = max((_RANK[r.verdict] for _, r in results), default=0)
-    if fail_on != "never" and worst >= _RANK[fail_on]:
-        return 1
-    return 0
+    if approved_by:
+        print(f"::notice::Findings approved by {', '.join(approved_by)} at this commit.")
+        return 0
+    return 1 if failing else 0
 
 
 def main() -> None:

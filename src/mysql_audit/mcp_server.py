@@ -28,13 +28,14 @@ server = MCPServer(
 
 
 def _review(sql: str, schema: str | None, stats: dict | None, mysql_version: str | None,
-            free_disk_gb: float | None = None) -> dict:
+            free_disk_gb: float | None = None, rollback_sql: str | None = None) -> dict:
     """Fill what the call leaves out from .mysql-audit.toml / MYSQL_AUDIT_VERSION, then review."""
     try:
         cfg = load_config()
         report = review(sql, schema=schema or cfg.schema, stats=stats or cfg.stats,
                         mysql_version=mysql_version or cfg.mysql_version,
-                        free_disk_gb=parse_gb(free_disk_gb) if free_disk_gb is not None else cfg.free_disk_gb)
+                        free_disk_gb=parse_gb(free_disk_gb) if free_disk_gb is not None else cfg.free_disk_gb,
+                        has_rollback=bool(rollback_sql and rollback_sql.strip()))
     except (OSError, ValueError) as e:
         return {"error": str(e)}
     if cfg.path and not (schema and stats and mysql_version):
@@ -49,6 +50,7 @@ def review_migration(
     stats: dict | None = None,
     mysql_version: str | None = None,
     free_disk_gb: float | None = None,
+    rollback_sql: str | None = None,
 ) -> dict:
     """Review MySQL DDL or a migration script for locking, data-loss and replication risks.
 
@@ -64,10 +66,13 @@ def review_migration(
             column changes. Without it, 8.0.29 or later is assumed.
         free_disk_gb: Optional free space on the server's data volume, in GB. With
             byte sizes in stats, a table rebuild that does not fit is blocked.
+        rollback_sql: Optional down migration kept in a separate file (e.g. a
+            golang-migrate .down.sql or Flyway U__ file). Down sections and
+            --rollback lines inside sql are found without it.
 
     Returns a verdict (safe / review / block) and findings with line, impact and fix.
     """
-    return _review(sql, schema, stats, mysql_version, free_disk_gb)
+    return _review(sql, schema, stats, mysql_version, free_disk_gb, rollback_sql)
 
 
 @server.tool()

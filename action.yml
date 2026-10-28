@@ -21,6 +21,9 @@ inputs:
   free-disk-gb:
     description: Free space on the database server's data volume, in GB. With byte sizes in stats, a table rebuild that does not fit fails the check (L17).
     default: ""
+  dba-approvers:
+    description: GitHub users (comma separated) whose approving review lets a failing check pass. The approval must be on the pull request's latest commit. Add pull_request_review to the workflow's triggers so an approval re-runs the check.
+    default: ""
   code-paths:
     description: Optional glob patterns of application code to check for SQL built by string concatenation.
     default: ""
@@ -54,6 +57,7 @@ runs:
         INPUT_STATS: ${{ inputs.stats }}
         INPUT_MYSQL_VERSION: ${{ inputs.mysql-version }}
         INPUT_FREE_DISK_GB: ${{ inputs.free-disk-gb }}
+        INPUT_DBA_APPROVERS: ${{ inputs.dba-approvers }}
         INPUT_CODE_PATHS: ${{ inputs.code-paths }}
         INPUT_CHANGED_ONLY: ${{ inputs.changed-only }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
