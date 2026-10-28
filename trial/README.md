@@ -4,23 +4,30 @@ MySQL Audit 會在 migration 和查詢**執行之前**審查它們，找出會�
 
 我們想請您用 DBA 的經驗檢查：**它的判斷對不對？漏了什麼？建議做法實際可行嗎？** 大約 10 到 20 分鐘。
 
-## 1. 安裝（1 分鐘）
+## 1. 安裝（2 分鐘）
 
-需要 Python 3.10 以上。
-
-```bash
-pip install mysql-audit-ai-agent
-# 或不安裝直接執行：uvx --from mysql-audit-ai-agent mysql-audit --help
-```
-
-## 2. 跑一遍範例（3 分鐘）
+需要 Python 3.10 以上（macOS 的指令是 `python3`）。在虛擬環境裡安裝，可以避開 macOS Homebrew 與新版 Linux 的 `externally-managed-environment` 錯誤：
 
 ```bash
 git clone https://github.com/jimmyjan0824/mysql_audit_ai_agent
 cd mysql_audit_ai_agent
+python3 -m venv .venv
+source .venv/bin/activate          # Windows：.venv\Scripts\activate
+pip install mysql-audit-ai-agent
+```
+
+之後每次開新的終端機，先在這個資料夾執行 `source .venv/bin/activate`。
+
+已經有 [uv](https://docs.astral.sh/uv/) 的話，也可以改用 `uv tool install mysql-audit-ai-agent`，`mysql-audit` 指令就能在任何地方使用；這時下面的範例請用 `uv run --no-project --with mysql-audit-ai-agent python trial/run.py` 執行。
+
+## 2. 跑一遍範例（3 分鐘）
+
+```bash
 python trial/run.py        # 每個範例的預期結果與實際結果
 python trial/run.py -v     # 加上每一條發現的說明
 ```
+
+啟用虛擬環境後 `python` 指令就能用，不需要另外建立連結。
 
 範例用的是一個小型電商資料庫（[schema.sql](schema.sql)），並假設 `orders` 有 2,500 萬筆、`users` 有 240 萬筆（[stats.json](stats.json)）。每個範例都在 CI 裡實際於 MySQL 8.0 和 8.4 上執行過。
 
