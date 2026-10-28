@@ -138,7 +138,7 @@ the MCP server). To upgrade:
 | `pip install` (in a venv) | `pip install -U mysql-audit-ai-agent` |
 | `uv tool install` | `uv tool upgrade mysql-audit-ai-agent` |
 | `uvx` (MCP config) | uvx reuses its cached copy; use `uvx mysql-audit-ai-agent@latest` in the config to check PyPI on every start, or run `uv cache clean mysql-audit-ai-agent` once |
-| GitHub Action | change `@v0.3.0` in the workflow to the new tag |
+| GitHub Action | change the `@vX.Y.Z` tag in the workflow to the new release |
 
 ## Pre-deploy checks
 
@@ -202,7 +202,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: jimmyjan0824/mysql_audit_ai_agent@v0.3.0
+      - uses: jimmyjan0824/mysql_audit_ai_agent@v0.3.1
         with:
           paths: db/migrate/**/*.sql      # default: **/*.sql
           schema: db/schema.sql           # optional, makes checks exact
