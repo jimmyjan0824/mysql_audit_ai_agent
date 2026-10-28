@@ -13,7 +13,7 @@ The checks are deterministic rules written from DBA experience, not another LLM 
 
 ## Try it: DBA trial kit
 
-[`trial/`](trial/README.md) has 19 example migrations and 2 code samples on a small shop schema
+[`trial/`](trial/README.md) has 23 example migrations and 2 code samples on a small shop schema
 (`orders` 25M rows, `users` 2.4M), each marked with the verdict it should get. Every example
 also runs on MySQL 8.0 and 8.4 in CI. The guide is in Traditional Chinese.
 
@@ -158,7 +158,7 @@ MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root pytest tests/test_mysql_oracle.py
 取得 `safe` / `review` / `block` 判定，以及每個風險的行號、線上影響與安全寫法。
 規則由 DBA 經驗寫成，結果可重複驗證。
 
-DBA 想試用的話，請看 [試用包說明](trial/README.md)：裡面有 19 個可直接執行的範例 migration、
+DBA 想試用的話，請看 [試用包說明](trial/README.md)：裡面有 23 個可直接執行的範例 migration、
 用自己資料庫的 schema 與筆數檢查的方式，以及 [回報誤判的表單](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml)。
 
 ## License
