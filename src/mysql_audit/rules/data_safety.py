@@ -210,7 +210,9 @@ def _check_l06(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
         "One huge transaction holds row locks until it commits, builds a large undo log, and "
         "reaches replicas as one event, so they lag while applying it.",
         "Loop over primary-key ranges (WHERE id BETWEEN x AND x+999) or use LIMIT 1000 with "
-        "ORDER BY id, commit each batch, and pause when replicas lag.",
+        "ORDER BY id, commit each batch, and pause between batches while replica lag is over "
+        "10 seconds. For deletes and archiving, pt-archiver --limit 1000 --commit-each "
+        "--check-slave-lag h=<replica> --max-lag 10 does this.",
     )]
 
 
@@ -225,8 +227,8 @@ def _check_l09(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
         f"This write on `{table}` is not limited to a key range or batch size.",
         "If the table is large, every matching row is changed in one transaction: long row "
         "locks and replication lag.",
-        "Batch it by primary-key range or LIMIT with ORDER BY id. Pass table row counts as "
-        "stats to get an exact verdict.",
+        "Batch it by primary-key range or LIMIT with ORDER BY id, pausing while replica lag is "
+        "over 10 seconds. Pass table sizes as stats to get an exact verdict.",
     )]
 
 

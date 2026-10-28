@@ -332,7 +332,7 @@ def _check_l03(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
         f"`{a.table}` is large ({ctx.describe_size(a.table)}); this DDL has to read or rebuild all of it.",
         consequence,
         "Run it with gh-ost or pt-online-schema-change, which copy in throttled chunks and pause "
-        "when replicas lag. If you keep a plain ALTER, run it off-peak and raise "
+        "when replica lag passes 10 seconds (gh-ost --max-lag-millis=10000, pt-osc --max-lag=10). If you keep a plain ALTER, run it off-peak and raise "
         "innodb_online_alter_log_max_size for the session's duration if writes are heavy.",
     )]
 
@@ -349,7 +349,7 @@ L03 = Rule(
     ),
     safe_example=(
         "gh-ost --database=shop --table=orders --alter=\"ADD INDEX idx_created (created_at)\" "
-        "--max-lag-millis=1500 --execute"
+        "--max-lag-millis=10000 --execute"
     ),
     check=_check_l03,
 )

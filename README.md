@@ -77,7 +77,7 @@ claude mcp add mysql-audit -- uvx mysql-audit-ai-agent
 [latest release](https://github.com/jimmyjan0824/mysql_audit_ai_agent/releases/latest) and open it.
 
 Tools: `review_migration(sql, schema?, stats?, mysql_version?, free_disk_gb?)`, `review_query(sql, schema?, stats?, mysql_version?)`,
-`review_code(code)`, `explain_rule(rule_id)`, `list_rules()`.
+`review_code(code)`, `preflight_checks(sql, mysql_version?)`, `explain_rule(rule_id)`, `list_rules()`.
 
 In our [agent evaluation](docs/agent-eval.md) Claude Code called the tool on its own in 10 of
 10 migration tasks, with no extra prompt.
@@ -92,6 +92,24 @@ mysql-audit --code app/models/user.py      # SQL injection check
 ```
 
 Exit code: 0 safe, 1 review, 2 block, so it can gate CI.
+
+## Pre-deploy checks
+
+The review never connects to your database. What only the live server knows (open
+transactions, metadata locks, replica lag) is checked by SQL you run on the primary right
+before deploying:
+
+```bash
+mysql-audit migration.sql --preflight > preflight.sql
+mysql your_db < preflight.sql
+```
+
+The queries are scoped to the tables the migration touches, and each returns rows only when
+the deploy should wait: transactions open longer than 10 seconds, statements on those tables
+running 10 seconds or more, sessions holding or waiting for their metadata locks, and tables
+that are large right now. The script also says how to check that every replica lags 10 seconds
+or less. CI runs it against MySQL 5.7, 8.0.28, 8.0 and 8.4, with and without a blocking
+transaction.
 
 ## MySQL version and project settings
 

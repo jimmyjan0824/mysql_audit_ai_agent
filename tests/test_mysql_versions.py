@@ -118,3 +118,69 @@ def test_stats_query_feeds_the_review(cur):
     assert stats["big"]["data_bytes"] > 0
     report = review("ALTER TABLE big ENGINE=InnoDB", schema=SCHEMA, stats=stats, free_disk_gb=0)
     assert any(f.rule_id == "L17" for f in report.findings)
+
+
+def _preflight_results(cur, script: str) -> dict[int, list]:
+    """Run each check of the preflight script; {check number: rows}."""
+    results, number, lines = {}, 0, []
+    for line in script.splitlines():
+        if line.startswith("-- ") and line[3:4].isdigit():
+            number = int(line[3])
+        elif line.strip() and not line.startswith("--"):
+            lines.append(line)
+            if line.rstrip().endswith(";"):
+                cur.execute("\n".join(lines))
+                results[number] = list(cur.fetchall())
+                lines = []
+    return results
+
+
+def test_preflight_sql_finds_a_blocking_transaction(cur):
+    from mysql_audit.preflight import preflight_sql
+
+    cur.execute("SELECT VERSION()")
+    version = cur.fetchone()[0]
+    if version.startswith("5.7"):
+        cur.execute("UPDATE performance_schema.setup_instruments SET ENABLED = 'YES', TIMED = 'YES' "
+                    "WHERE NAME = 'wait/lock/metadata/sql/mdl'")
+    script = preflight_sql("ALTER TABLE big ADD INDEX i (a)", version)
+
+    quiet = _preflight_results(cur, script)
+    assert sorted(quiet) == [1, 2, 3, 4] and not any(quiet.values()), quiet
+
+    def connect():
+        conn = pymysql.connect(host=os.environ["MYSQL_HOST"], port=int(os.environ.get("MYSQL_PORT", "3306")),
+                               user=os.environ.get("MYSQL_USER", "root"),
+                               password=os.environ.get("MYSQL_PASSWORD", ""),
+                               database="mysql_audit_versions", autocommit=True)
+        return conn
+
+    import threading
+    import time
+
+    holder, waiter = connect(), connect()
+    with holder.cursor() as h:
+        h.execute("BEGIN")
+        h.execute("SELECT * FROM big")  # holds a shared metadata lock until commit
+
+    def ddl():
+        with waiter.cursor() as w:
+            w.execute("SET SESSION lock_wait_timeout = 30")
+            try:
+                w.execute("ALTER TABLE big ADD INDEX i (a)")
+            except pymysql.MySQLError:
+                pass
+
+    thread = threading.Thread(target=ddl)
+    thread.start()
+    try:
+        time.sleep(11)  # past the 10-second thresholds
+        found = _preflight_results(cur, script)
+    finally:
+        holder.commit()
+        thread.join()
+        holder.close()
+        waiter.close()
+    assert found[1], "long transaction not found"
+    assert found[2], "long-waiting ALTER on the table not found"
+    assert any(row[2] == "PENDING" for row in found[3]) and len(found[3]) >= 2, found[3]

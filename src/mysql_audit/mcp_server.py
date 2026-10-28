@@ -7,6 +7,7 @@ from mcp.server.mcpserver import MCPServer
 from . import __version__
 from .config import load_config, parse_gb
 from .engine import review
+from .preflight import preflight_sql, touched_tables
 from .engine import review_code as _review_code
 from .rules import RULES
 
@@ -20,7 +21,8 @@ server = MCPServer(
         "it using each finding's fix and review again. If it is 'review', tell the user about "
         "the findings. For exact results pass the CREATE TABLE statements as schema, row "
         "counts from information_schema.tables as stats, and the server's version as "
-        "mysql_version. A .mysql-audit.toml in the project supplies any of these you leave out."
+        "mysql_version. A .mysql-audit.toml in the project supplies any of these you leave out. "
+        "Before a migration on existing tables is deployed, give the user preflight_checks."
     ),
 )
 
@@ -88,6 +90,26 @@ def review_code(code: str) -> dict:
     Returns a verdict (safe / block) and findings with line and the parameterized fix.
     """
     return _review_code(code).to_dict()
+
+
+@server.tool()
+def preflight_checks(sql: str, mysql_version: str | None = None) -> dict:
+    """SQL for the user (or DBA) to run on the primary right before deploying a migration:
+    long transactions, long queries and metadata locks on the tables it touches, current
+    table sizes, and how to check replica lag. Each query returns rows only when the deploy
+    should wait. This tool does not connect to the database; hand the SQL to the user.
+
+    Args:
+        sql: The migration that is about to run.
+        mysql_version: Optional server version, e.g. "5.7.44"; picks SHOW SLAVE / REPLICA STATUS.
+    """
+    try:
+        version = mysql_version or load_config().mysql_version
+        return {"tables": touched_tables(sql), "sql": preflight_sql(sql, version),
+                "how_to_read": "Run on the primary in the target database. No rows from every "
+                               "query, and replica lag of 10 s or less, means go."}
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
 
 
 @server.tool()

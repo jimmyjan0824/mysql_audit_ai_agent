@@ -83,6 +83,15 @@ mysql-audit your_migration.sql --schema schema.sql --stats stats.json --free-dis
 
 結束碼 0 = safe、1 = review、2 = block。所有判斷都在本機執行，SQL 不會傳到任何地方。
 
+正式部署前，可以產生一份只針對這次 migration 用到的表的檢查 SQL，在主庫上執行：
+
+```bash
+mysql-audit your_migration.sql --preflight > preflight.sql
+mysql your_db < preflight.sql
+```
+
+每個查詢只有在應該先暫停時才會回傳資料列：超過 10 秒的交易、在這些表上跑了 10 秒以上的查詢、持有或等待這些表 metadata lock 的連線，以及目前已經是大表的表。腳本最後也會說明如何確認每台從庫的延遲在 10 秒以內。
+
 ## 4. 回報誤判
 
 請到 [回報表單](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml) 填寫：被審查的 SQL、表結構、工具的輸出，以及實際上會怎樣、依據是什麼（例如「在 8.0.36 用 ALGORITHM=INPLACE, LOCK=NONE 實際跑成功」）。表名或欄位名不便公開的話，請先改成假的名稱。
