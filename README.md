@@ -105,6 +105,12 @@ claude mcp add mysql-audit -- uvx mysql-audit-ai-agent
 **Claude Desktop, one click**: download `mysql-audit.mcpb` from the
 [latest release](https://github.com/jimmyjan0824/mysql_audit_ai_agent/releases/latest) and open it.
 
+> **Running `uvx mysql-audit-ai-agent` in a terminal prints nothing and seems to hang. That is
+> expected:** it is the MCP server, waiting for an MCP client to talk to it over stdin. Press
+> Ctrl+C to leave. Put the command in your client's MCP config as above, and use
+> `mysql-audit` (see [Command line](#command-line)) to review files yourself, for example
+> `uvx --from mysql-audit-ai-agent mysql-audit migration.sql`.
+
 Tools: `review_migration(sql, schema?, stats?, mysql_version?, free_disk_gb?, rollback_sql?)`, `review_query(sql, schema?, stats?, mysql_version?)`,
 `review_code(code)`, `preflight_checks(sql, mysql_version?)`, `explain_rule(rule_id)`, `list_rules()`.
 
@@ -234,6 +240,10 @@ MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root pytest tests/test_mysql_oracle.py
 給 AI 編碼代理用的 MySQL 變更安全審查。代理在執行 migration 前呼叫 `review_migration`，
 取得 `safe` / `review` / `block` 判定，以及每個風險的行號、線上影響與安全寫法。
 規則由 DBA 經驗寫成，結果可重複驗證。
+
+注意：在終端機直接執行 `uvx mysql-audit-ai-agent` 不會有任何輸出，看起來像卡住，這是正常的。
+它是 MCP 伺服器，正在等 Claude Code、Cursor 等 MCP 客戶端連線，按 Ctrl+C 離開即可。這個指令要寫進
+MCP 設定讓 AI 工具啟動；自己在終端機審查檔案請用 `uvx --from mysql-audit-ai-agent mysql-audit 檔名.sql`。
 
 DBA 想試用的話，請看 [試用包說明](trial/README.md)：裡面有 24 個可直接執行的範例 migration、
 用自己資料庫的 schema 與筆數檢查的方式，以及 [回報誤判的表單](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml)。

@@ -102,4 +102,5 @@ mysql your_db < preflight.sql
 ## 也可以這樣用
 
 - **Claude Code**：`claude mcp add mysql-audit -- uvx mysql-audit-ai-agent`，之後 AI 在跑 migration 前會自己呼叫審查。
+  注意：`uvx mysql-audit-ai-agent` 是給 AI 工具啟動的 MCP 伺服器，自己在終端機執行時不會有任何輸出、看起來像卡住，這是正常的（它在等 MCP 客戶端連線），按 Ctrl+C 離開即可。自己審查 SQL 檔請用上面的 `mysql-audit` 指令。
 - **GitHub Action**：每個 PR 自動審查改到的 migration，設定見[主 README](../README.md#github-action)。
