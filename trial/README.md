@@ -20,6 +20,15 @@ pip install mysql-audit-ai-agent
 
 查看目前版本：`mysql-audit --version`。更新到最新版：`pip install -U mysql-audit-ai-agent`（用 `uv tool install` 安裝的話改用 `uv tool upgrade mysql-audit-ai-agent`）。
 
+**更新後執行的還是舊版？**（例如 `--version` 出現 `unrecognized arguments`）這代表終端機先找到了另一份舊的 `mysql-audit`，例如之前用 `uv tool install` 裝在 `~/.local/bin` 的那份，或者 shell 還記著舊的路徑：
+
+```bash
+which -a mysql-audit   # 列出所有找得到的 mysql-audit，第一個就是實際執行的那個
+hash -r                # 清掉 shell 記住的舊路徑（zsh 用 rehash）
+```
+
+如果第一個不是 `.venv/bin/mysql-audit`，請先執行 `source .venv/bin/activate`；如果是 `~/.local/bin/mysql-audit`，請用 `uv tool upgrade mysql-audit-ai-agent` 更新它，或用 `uv tool uninstall mysql-audit-ai-agent` 移除，只留一份。也可以直接執行 `.venv/bin/mysql-audit --version` 確認虛擬環境裡的版本。
+
 已經有 [uv](https://docs.astral.sh/uv/) 的話，也可以改用 `uv tool install mysql-audit-ai-agent`，`mysql-audit` 指令就能在任何地方使用；這時下面的範例請用 `uv run --no-project --with mysql-audit-ai-agent python trial/run.py` 執行。
 
 ## 2. 跑一遍範例（3 分鐘）
