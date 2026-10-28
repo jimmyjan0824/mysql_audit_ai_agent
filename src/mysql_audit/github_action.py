@@ -16,8 +16,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from .config import load_config
 from .engine import review, review_code
 from .models import Report
+from .version import parse_version
 
 MARKER = "<!-- mysql-audit -->"
 _RANK = {"safe": 0, "review": 1, "block": 2}
@@ -152,9 +154,17 @@ def run(env: dict[str, str] | None = None) -> int:
     if fail_on not in ("block", "review", "never"):
         print(f"::error::fail-on must be block, review or never, not {fail_on!r}")
         return 2
+    try:
+        cfg = load_config(start=workspace, env={})
+        version = _input(env, "mysql-version") or cfg.mysql_version
+        if version:
+            parse_version(version)
+    except (OSError, ValueError) as e:
+        print(f"::error::{e}")
+        return 2
     schema_path, stats_path = _input(env, "schema"), _input(env, "stats")
-    schema = (workspace / schema_path).read_text(encoding="utf-8") if schema_path else None
-    stats = json.loads((workspace / stats_path).read_text(encoding="utf-8")) if stats_path else None
+    schema = (workspace / schema_path).read_text(encoding="utf-8") if schema_path else cfg.schema
+    stats = json.loads((workspace / stats_path).read_text(encoding="utf-8")) if stats_path else cfg.stats
 
     event = {}
     if env.get("GITHUB_EVENT_PATH") and Path(env["GITHUB_EVENT_PATH"]).exists():
@@ -170,10 +180,11 @@ def run(env: dict[str, str] | None = None) -> int:
 
     results: list[tuple[str, Report]] = []
     for path in candidates:
-        if path in skip or not (workspace / path).is_file():
+        if path in skip or (workspace / path).resolve() in cfg.files or not (workspace / path).is_file():
             continue
         if matches(path, paths):
-            report = review((workspace / path).read_text(encoding="utf-8", errors="replace"), schema=schema, stats=stats)
+            report = review((workspace / path).read_text(encoding="utf-8", errors="replace"),
+                            schema=schema, stats=stats, mysql_version=version)
         elif code_paths and matches(path, code_paths):
             report = review_code((workspace / path).read_text(encoding="utf-8", errors="replace"))
         else:

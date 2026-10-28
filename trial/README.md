@@ -76,6 +76,8 @@ mysql -N -e "SELECT JSON_OBJECTAGG(table_name, table_rows) FROM information_sche
 mysql-audit your_migration.sql --schema schema.sql --stats stats.json
 ```
 
+請加上實際部署的版本，例如 `--mysql-version 8.0.28`、`5.7.44` 或 `aurora-3.04`：哪些 ALTER 能 INSTANT 完成依版本而不同，沒給版本時會假設 8.0.29 以上並在結果中註明。常用的設定可以寫進專案根目錄的 `.mysql-audit.toml`（見[主 README](../README.md#mysql-version-and-project-settings)），之後只要執行 `mysql-audit your_migration.sql`。
+
 結束碼 0 = safe、1 = review、2 = block。所有判斷都在本機執行，SQL 不會傳到任何地方。
 
 ## 4. 回報誤判

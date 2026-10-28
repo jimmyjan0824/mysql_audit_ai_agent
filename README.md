@@ -91,7 +91,7 @@ claude mcp add mysql-audit -- uvx mysql-audit-ai-agent
 **Claude Desktop, one click**: download `mysql-audit.mcpb` from the
 [latest release](https://github.com/jimmyjan0824/mysql_audit_ai_agent/releases/latest) and open it.
 
-Tools: `review_migration(sql, schema?, stats?)`, `review_query(sql, schema?, stats?)`,
+Tools: `review_migration(sql, schema?, stats?, mysql_version?)`, `review_query(sql, schema?, stats?, mysql_version?)`,
 `review_code(code)`, `explain_rule(rule_id)`, `list_rules()`.
 
 In our [agent evaluation](docs/agent-eval.md) Claude Code called the tool on its own in 10 of
@@ -107,6 +107,32 @@ mysql-audit --code app/models/user.py      # SQL injection check
 ```
 
 Exit code: 0 safe, 1 review, 2 block, so it can gate CI.
+
+## MySQL version and project settings
+
+Which `ALTER`s run INSTANT depends on the server version: 5.7 has no INSTANT,
+8.0.12–8.0.28 only adds columns at the end instantly, and 8.0.29+ also adds anywhere
+and drops columns instantly. Without a version the tool assumes 8.0.29+ and says so in
+the result. Pass the version you deploy to, for example `8.0.28`, `5.7.44` or `aurora-3.04`:
+
+```bash
+mysql-audit migration.sql --mysql-version 8.0.28
+```
+
+To avoid repeating options, put a `.mysql-audit.toml` at the repository root. The CLI,
+the MCP server and the GitHub Action all read it (searching upward from the current
+directory, stopping at the `.git` folder); options given on the command line or in the
+tool call win.
+
+```toml
+mysql_version = "8.0.28"
+schema = "db/schema.sql"        # paths are relative to this file
+stats = "db/table_rows.json"
+```
+
+The `MYSQL_AUDIT_VERSION` environment variable overrides `mysql_version` for the CLI and
+the MCP server, for example
+`claude mcp add mysql-audit -e MYSQL_AUDIT_VERSION=8.0.28 -- uvx mysql-audit-ai-agent`.
 
 ## GitHub Action
 
@@ -130,6 +156,7 @@ jobs:
           paths: db/migrate/**/*.sql      # default: **/*.sql
           schema: db/schema.sql           # optional, makes checks exact
           # stats: db/table_rows.json     # optional row counts, enables large-table rules
+          # mysql-version: 8.0.28         # optional; .mysql-audit.toml also works
           # code-paths: app/**/*.py       # optional SQL injection check
           # fail-on: review               # block (default), review or never
 ```
@@ -145,7 +172,8 @@ Every rule has positive and negative test cases under `tests/`.
 
 `tests/test_mysql_oracle.py` checks the rules against a real server: each ALTER is
 run with `ALGORITHM=INPLACE, LOCK=NONE`, and MySQL's refusal (or not) must match the
-rule's verdict. CI runs it on MySQL 8.0 and 8.4. Locally:
+rule's verdict. CI runs it on MySQL 8.0 and 8.4. `tests/test_mysql_versions.py` checks the
+version-dependent INSTANT judgment the same way on 5.7, 8.0.28 and 8.4. Locally:
 
 ```bash
 docker run -d -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 mysql:8.4
