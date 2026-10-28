@@ -13,10 +13,13 @@ inputs:
     description: Path to a file with the current CREATE TABLE statements (e.g. a schema dump). Makes column and index checks exact.
     default: ""
   stats:
-    description: 'Path to a JSON file of approximate row counts, e.g. {"orders": 25000000}. Enables the large-table rules.'
+    description: 'Path to a JSON file of table sizes, {"orders": 25000000} or {"orders": {"rows": ..., "data_bytes": ..., "index_bytes": ...}}. Enables the large-table rules.'
     default: ""
   mysql-version:
     description: 'Target MySQL version, e.g. 8.0.28, 8.4.3 or aurora-3.04. Older servers copy the table for more column changes. Default: 8.0.29 or later.'
+    default: ""
+  free-disk-gb:
+    description: Free space on the database server's data volume, in GB. With byte sizes in stats, a table rebuild that does not fit fails the check (L17).
     default: ""
   code-paths:
     description: Optional glob patterns of application code to check for SQL built by string concatenation.
@@ -50,6 +53,7 @@ runs:
         INPUT_SCHEMA: ${{ inputs.schema }}
         INPUT_STATS: ${{ inputs.stats }}
         INPUT_MYSQL_VERSION: ${{ inputs.mysql-version }}
+        INPUT_FREE_DISK_GB: ${{ inputs.free-disk-gb }}
         INPUT_CODE_PATHS: ${{ inputs.code-paths }}
         INPUT_CHANGED_ONLY: ${{ inputs.changed-only }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}

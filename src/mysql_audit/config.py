@@ -5,6 +5,7 @@ given once instead of on every run.
     mysql_version = "8.0.28"
     schema = "db/schema.sql"        # relative to this file
     stats = "db/table_stats.json"
+    free_disk_gb = 120              # free space on the data volume
 
 Command-line options and tool arguments override these. MYSQL_AUDIT_VERSION in
 the environment overrides mysql_version (handy in an MCP client's config).
@@ -24,7 +25,7 @@ else:  # pragma: no cover
     import tomli as tomllib
 
 CONFIG_NAME = ".mysql-audit.toml"
-_KEYS = {"mysql_version", "schema", "stats"}
+_KEYS = {"mysql_version", "schema", "stats", "free_disk_gb"}
 
 
 @dataclass
@@ -32,8 +33,22 @@ class Config:
     mysql_version: str | None = None
     schema: str | None = None          # CREATE TABLE text
     stats: dict | None = None
+    free_disk_gb: float | None = None
     path: Path | None = None           # the file these came from
     files: tuple[Path, ...] = ()       # schema / stats files it names (not migrations)
+
+
+def parse_gb(value) -> float | None:
+    """Free disk in GB as a non-negative number; None when not given."""
+    if value is None or value == "":
+        return None
+    try:
+        gb = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"free_disk_gb must be a number of GB, not {value!r}") from None
+    if gb < 0:
+        raise ValueError(f"free_disk_gb must not be negative, got {value!r}")
+    return gb
 
 
 def find_config(start: Path) -> Path | None:
@@ -59,6 +74,7 @@ def load_config(start: Path | None = None, path: Path | None = None, env: dict |
                              f"known: {', '.join(sorted(_KEYS))}")
         base = path.parent
         cfg.mysql_version = data.get("mysql_version")
+        cfg.free_disk_gb = parse_gb(data.get("free_disk_gb"))
         if data.get("schema"):
             cfg.schema = (base / data["schema"]).read_text(encoding="utf-8")
             cfg.files += ((base / data["schema"]).resolve(),)

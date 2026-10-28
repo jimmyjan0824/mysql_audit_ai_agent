@@ -1,11 +1,12 @@
-"""L01 and L02: will MySQL run this DDL online, or copy and lock the table?"""
+"""L01-L03 and L17: will MySQL run this DDL online, or copy and lock the table,
+and is there room for the copy?"""
 
 from __future__ import annotations
 
 from sqlglot import exp
 
 from ..analysis import AlterClause, Analyzed
-from ..context import CHARSET_MAXLEN, Column, ScriptContext
+from ..context import CHARSET_MAXLEN, Column, ScriptContext, gb
 from ..models import Finding, Severity
 from .base import Rule, finding
 
@@ -285,24 +286,54 @@ def _metadata_only_change(a: Analyzed, ctx: ScriptContext, c: AlterClause) -> bo
     return verdict == "online" and reason in _METADATA_ONLY_CHANGES
 
 
-def _check_l03(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
-    if a.kind not in ("alter_table", "create_index") or ctx.is_new(a.table) or not ctx.is_large(a.table):
-        return []
-    if a.kind == "alter_table" and all(
+_REBUILDS = {"rebuild", "add_pk", "drop_pk", "convert_charset", "add_stored_column"}
+
+
+def _row_work(a: Analyzed, ctx: ScriptContext, c: AlterClause) -> bool:
+    return not (
         c.kind in _NO_ROW_WORK
         or (c.kind in ("add_column", "drop_column") and ctx.instant_column_change(c.kind, c.words))
         or (c.kind in ("modify", "change") and _metadata_only_change(a, ctx, c))
+    )
+
+
+def _rebuilds(a: Analyzed, ctx: ScriptContext) -> bool:
+    """The ALTER writes a full new copy of the table (INPLACE rebuild or COPY)."""
+    if a.kind != "alter_table":
+        return False
+    if a.algorithm == "COPY":
+        return True
+    return any(
+        c.kind in _REBUILDS or (c.kind in ("add_column", "drop_column", "modify", "change") and _row_work(a, ctx, c))
         for c in a.clauses
-    ):
+    )
+
+
+def _check_l03(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
+    if a.kind not in ("alter_table", "create_index") or ctx.is_new(a.table) or not ctx.is_large(a.table):
         return []
-    rows = ctx.size(a.table)
+    if a.kind == "alter_table" and not any(_row_work(a, ctx, c) for c in a.clauses):
+        return []
+    consequence = (
+        "Even an online ALTER runs for a long time, holds undo, and replicas apply it only after "
+        "the primary finishes, so they fall behind by the full duration. Writes made meanwhile "
+        "are buffered in the online alter log; past innodb_online_alter_log_max_size (default "
+        "128 MB) the ALTER fails at the very end with error 1799 and rolls back."
+    )
+    size = ctx.bytes_of(a.table)
+    if size is not None and _rebuilds(a, ctx):
+        consequence += (
+            f" The rebuild writes a new copy of the table (about {gb(size)}) before dropping the "
+            "old one, so the data volume needs that much free space; gh-ost and pt-online-schema-change "
+            "need it too, plus binlog space for the copied rows."
+        )
     return [finding(
         "L03", Severity.WARN, a,
-        f"`{a.table}` has about {rows:,} rows; this DDL has to read or rebuild all of them.",
-        "Even an online ALTER runs for a long time, holds undo, and replicas apply it only after "
-        "the primary finishes, so they fall behind by the full duration.",
+        f"`{a.table}` is large ({ctx.describe_size(a.table)}); this DDL has to read or rebuild all of it.",
+        consequence,
         "Run it with gh-ost or pt-online-schema-change, which copy in throttled chunks and pause "
-        "when replicas lag.",
+        "when replicas lag. If you keep a plain ALTER, run it off-peak and raise "
+        "innodb_online_alter_log_max_size for the session's duration if writes are heavy.",
     )]
 
 
@@ -321,4 +352,47 @@ L03 = Rule(
         "--max-lag-millis=1500 --execute"
     ),
     check=_check_l03,
+)
+
+
+# -- L17 -------------------------------------------------------------------
+
+def _check_l17(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
+    size = ctx.bytes_of(a.table)
+    if ctx.free_disk is None or size is None or ctx.is_new(a.table) or not _rebuilds(a, ctx):
+        return []
+    # The new copy needs about the table's size; leave a margin for sort files,
+    # the online alter log and binlog growth.
+    need = size
+    if ctx.free_disk < need:
+        severity, verdict = Severity.BLOCK, "is not enough"
+    elif ctx.free_disk < need * 1.5:
+        severity, verdict = Severity.WARN, "leaves little margin"
+    else:
+        return []
+    return [finding(
+        "L17", severity, a,
+        f"Rebuilding `{a.table}` needs about {gb(need)} free for the new copy; "
+        f"{gb(ctx.free_disk)} free {verdict}.",
+        "If the volume fills during the rebuild, the ALTER fails and rolls back after hours of "
+        "work. On a shared volume, the server can stop accepting writes for every table.",
+        "Free space first (purge old binlogs, drop unused tables, grow the volume) to at least "
+        "1.5 times the table size. gh-ost and pt-online-schema-change also write a full copy, "
+        "plus binlog for every copied row.",
+    )]
+
+
+L17 = Rule(
+    id="L17",
+    title="Not enough free disk for a table rebuild",
+    severity=Severity.BLOCK,
+    why=(
+        "A rebuilding ALTER (INPLACE or COPY), gh-ost and pt-online-schema-change all build a "
+        "complete new copy of the table before dropping the old one. The data volume needs "
+        "free space for that copy, plus temporary sort files and, for the tools, binlog for "
+        "every copied row. The check needs table sizes (data_bytes, index_bytes) in stats and "
+        "the free space, which you read on the server host (df) or from your cloud console."
+    ),
+    safe_example="mysql-audit migration.sql --stats stats.json --free-disk-gb 120",
+    check=_check_l17,
 )
