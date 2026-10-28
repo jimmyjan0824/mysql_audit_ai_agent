@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from mcp.server.mcpserver import MCPServer
 
 from . import __version__
@@ -133,6 +135,9 @@ def list_rules() -> list[dict]:
 
 
 def main() -> None:
+    if any(arg in ("--version", "-V") for arg in sys.argv[1:]):
+        print(f"mysql-audit-ai-agent {__version__}")
+        return
     server.run("stdio")
 
 

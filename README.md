@@ -128,6 +128,18 @@ mysql-audit --code app/models/user.py      # SQL injection check
 
 Exit code: 0 safe, 1 review, 2 block, so it can gate CI.
 
+### Version and upgrades
+
+`mysql-audit --version` prints the installed version (`mysql-audit-ai-agent --version` for
+the MCP server). To upgrade:
+
+| Installed with | Upgrade |
+|---|---|
+| `pip install` (in a venv) | `pip install -U mysql-audit-ai-agent` |
+| `uv tool install` | `uv tool upgrade mysql-audit-ai-agent` |
+| `uvx` (MCP config) | uvx reuses its cached copy; use `uvx mysql-audit-ai-agent@latest` in the config to check PyPI on every start, or run `uv cache clean mysql-audit-ai-agent` once |
+| GitHub Action | change `@v0.3.0` in the workflow to the new tag |
+
 ## Pre-deploy checks
 
 The review never connects to your database. What only the live server knows (open

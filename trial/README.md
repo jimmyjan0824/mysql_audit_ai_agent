@@ -18,6 +18,8 @@ pip install mysql-audit-ai-agent
 
 之後每次開新的終端機，先在這個資料夾執行 `source .venv/bin/activate`。
 
+查看目前版本：`mysql-audit --version`。更新到最新版：`pip install -U mysql-audit-ai-agent`（用 `uv tool install` 安裝的話改用 `uv tool upgrade mysql-audit-ai-agent`）。
+
 已經有 [uv](https://docs.astral.sh/uv/) 的話，也可以改用 `uv tool install mysql-audit-ai-agent`，`mysql-audit` 指令就能在任何地方使用；這時下面的範例請用 `uv run --no-project --with mysql-audit-ai-agent python trial/run.py` 執行。
 
 ## 2. 跑一遍範例（3 分鐘）
