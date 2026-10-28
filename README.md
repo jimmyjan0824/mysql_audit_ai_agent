@@ -89,8 +89,14 @@ leaves your machine.
 **Claude Code**
 
 ```bash
-claude mcp add mysql-audit -- uvx mysql-audit-ai-agent
+claude mcp add mysql-audit --scope user -- uvx mysql-audit-ai-agent@latest
 ```
+
+`--scope user` makes it available in every project. `--scope project` writes it to the
+project's `.mcp.json` instead, so everyone who clones the repo gets it. Check that it is
+connected with `claude mcp list` (it should show `mysql-audit ... ✓ Connected`), or type `/mcp`
+inside Claude Code to see the tools. Then ask Claude to review a migration, or just let it run one:
+it calls `review_migration` on its own. Remove it with `claude mcp remove mysql-audit`.
 
 **Cursor, Windsurf, Claude Desktop and other MCP clients** (`mcp.json` / `claude_desktop_config.json`):
 
@@ -237,6 +243,13 @@ pytest
 
 Every rule has positive and negative test cases under `tests/`.
 
+To try your local changes in Claude Code without publishing, point it at your checkout. Each
+session runs the code as it is now; after an edit, restart Claude Code or reconnect in `/mcp`.
+
+```bash
+claude mcp add mysql-audit-dev -- uv --directory /path/to/mysql_audit_ai_agent run mysql-audit-mcp
+```
+
 `tests/test_mysql_oracle.py` checks the rules against a real server: each ALTER is
 run with `ALGORITHM=INPLACE, LOCK=NONE`, and MySQL's refusal (or not) must match the
 rule's verdict. CI runs it on MySQL 8.0 and 8.4. `tests/test_mysql_versions.py` checks the
@@ -256,6 +269,18 @@ MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root pytest tests/test_mysql_oracle.py
 注意：在終端機直接執行 `uvx mysql-audit-ai-agent` 不會有任何輸出，看起來像卡住，這是正常的。
 它是 MCP 伺服器，正在等 Claude Code、Cursor 等 MCP 客戶端連線，按 Ctrl+C 離開即可。這個指令要寫進
 MCP 設定讓 AI 工具啟動；自己在終端機審查檔案請用 `uvx --from mysql-audit-ai-agent mysql-audit 檔名.sql`。
+
+在 Claude Code 中使用：
+
+```bash
+# 已發佈的版本；--scope user 所有專案都能用，--scope project 會寫進專案的 .mcp.json 讓團隊共用
+claude mcp add mysql-audit --scope user -- uvx mysql-audit-ai-agent@latest
+# 開發中的本機程式碼，不用發版就能測；改完後重開 Claude Code 或在 /mcp 重新連線
+claude mcp add mysql-audit-dev -- uv --directory /你的路徑/mysql_audit_ai_agent run mysql-audit-mcp
+```
+
+用 `claude mcp list` 確認顯示 `✓ Connected`，或在 Claude Code 裡輸入 `/mcp` 看工具清單；
+移除用 `claude mcp remove mysql-audit`。
 
 DBA 想試用的話，請看 [試用包說明](trial/README.md)：裡面有 24 個可直接執行的範例 migration、
 用自己資料庫的 schema 與筆數檢查的方式，以及 [回報誤判的表單](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml)。
