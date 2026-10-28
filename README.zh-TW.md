@@ -97,6 +97,19 @@ claude mcp add mysql-audit --scope user -- uvx mysql-audit-ai-agent@latest
 接著請 Claude 審查 migration，或直接讓它執行 migration，它會自己先呼叫 `review_migration`。
 移除用 `claude mcp remove mysql-audit`。
 
+**`/mcp` 顯示 `Failed to reconnect to mysql-audit: ENOENT`？** 代表 Claude Code 找不到 `uvx` 指令：
+可能是還沒安裝 uv，或是 uv 裝在 Claude Code 啟動時的 PATH 以外的資料夾。
+
+```bash
+which uvx                                              # 查 uvx 在哪裡
+curl -LsSf https://astral.sh/uv/install.sh | sh        # 找不到的話先安裝 uv，再重開終端機
+claude mcp remove mysql-audit                          # 用 uvx 的完整路徑重新加入
+claude mcp add mysql-audit --scope user -- "$(which uvx)" mysql-audit-ai-agent@latest
+claude mcp list                                        # 應顯示 mysql-audit ... ✓ Connected
+```
+
+完成後重開 Claude Code（或在 `/mcp` 裡重新連線）。第一次啟動要下載套件，可能要等幾秒。
+
 **Cursor、Windsurf、Claude Desktop 及其他 MCP 客戶端**（`mcp.json` / `claude_desktop_config.json`）：
 
 ```json
@@ -344,6 +357,7 @@ jobs:
 | --- | --- |
 | `uvx mysql-audit-ai-agent` 沒有任何輸出、像卡住 | 正常：它是在等客戶端連線的 MCP 伺服器，按 Ctrl+C 離開。請把它加進 AI 工具的 MCP 設定，自己審查檔案用 `mysql-audit` |
 | `pip install` 出現 `externally-managed-environment` | 在虛擬環境中安裝：`python3 -m venv .venv && source .venv/bin/activate`，或改用 `uv tool install mysql-audit-ai-agent` |
+| Claude Code 的 `/mcp` 顯示 `Failed to reconnect to mysql-audit: ENOENT` | 沒有安裝 uv，或 uvx 不在 Claude Code 的 PATH 裡。`which uvx` 找不到就先安裝 uv，再用完整路徑重新加入：`claude mcp add mysql-audit --scope user -- "$(which uvx)" mysql-audit-ai-agent@latest`（見 [搭配 AI 助理使用](#搭配-ai-助理使用mcp)） |
 | 桌面程式顯示 `spawn uvx ENOENT` | 把 `command` 改成 `which uvx` 查到的完整路徑 |
 | 第一次啟動 MCP 伺服器逾時 | 第一次要下載套件。先執行一次 `uvx --from mysql-audit-ai-agent mysql-audit --help`，再重開 AI 工具 |
 | 結果和本文件不同 | 可能是快取的舊版，見 [查看與更新版本](#查看與更新版本) |
