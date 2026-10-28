@@ -188,7 +188,9 @@ def _classify(stmt: Statement, part: list[Token]) -> AlterClause:
         if nxt in ("CHECK", "PARTITION"):
             return AlterClause("other", part)
         j = 2 if nxt == "COLUMN" else 1
-        clause = AlterClause("add_column", part, column=_ident(part, j))
+        # A STORED generated column is computed for every row: always ALGORITHM=COPY.
+        kind = "add_stored_column" if "AS" in w and "STORED" in w else "add_column"
+        clause = AlterClause(kind, part, column=_ident(part, j))
         _read_type(stmt, clause, part, j + 1)
         return clause
 

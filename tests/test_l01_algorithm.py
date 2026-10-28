@@ -10,6 +10,7 @@ POSITIVE = [
     ("CREATE SPATIAL INDEX sp ON users (age)", "warn"),
     ("ALTER TABLE users ADD PRIMARY KEY (id)", "warn"),
     ("ALTER TABLE users ADD COLUMN note VARCHAR(100)", "info"),
+    ("ALTER TABLE users ADD COLUMN age2 INT AS (age * 2) STORED", "warn"),  # COPY only
     ("ALTER TABLE users ADD INDEX idx_email (email)", "info"),
     ("CREATE INDEX idx_email ON users (email)", "info"),
     ("DROP INDEX idx_email ON users", "info"),
