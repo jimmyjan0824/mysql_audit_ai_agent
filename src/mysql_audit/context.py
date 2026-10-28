@@ -52,6 +52,7 @@ class ScriptContext:
     reported: set[str] = field(default_factory=set)  # once-per-script rules
     version: Version | None = None  # target server; None = assume 8.0.29 or later
     version_assumed: bool = False   # a judgment depended on that assumption
+    backup_noted: bool = False      # the script has a "-- backup: <where>" line
 
     def instant_column_change(self, kind: str, words: list[str]) -> bool:
         """True when ADD COLUMN / DROP COLUMN runs INSTANT on the target server."""

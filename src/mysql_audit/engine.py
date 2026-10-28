@@ -6,6 +6,7 @@ from .analysis import analyze
 from .context import ScriptContext
 from .models import Report
 from .rules import RULES, review_code
+from .rules.rollback import check_rollback, has_backup_note, has_rollback_note, split_down
 from .splitter import split_statements
 from .version import parse_version
 
@@ -34,6 +35,7 @@ def review(
     stats: dict | None = None,
     mysql_version: str | None = None,
     free_disk_gb: float | None = None,
+    has_rollback: bool = False,
 ) -> Report:
     """Review a migration or SQL script.
 
@@ -48,8 +50,13 @@ def review(
         8.0.29) or for every ADD COLUMN (5.7). Without it, 8.0.29 or later is assumed.
     free_disk_gb: optional free space on the server's data volume. With table
         sizes in stats, a rebuild that needs more than this is blocked (L17).
+    has_rollback: the caller found a rollback outside this text (a sibling
+        .down.sql or Flyway U__ file). Down sections and --rollback lines inside
+        the text are found here; the down section itself is not reviewed.
     """
-    ctx = ScriptContext()
+    sql, down = split_down(sql)
+    has_rollback = has_rollback or has_rollback_note(sql, down)
+    ctx = ScriptContext(backup_noted=has_backup_note(sql))
     report = Report()
     if mysql_version:
         ctx.version = parse_version(mysql_version)
@@ -77,6 +84,7 @@ def review(
             report.findings.extend(rule.check(a, ctx))
         ctx.update(a)
 
+    check_rollback(report, has_rollback)
     if ctx.version_assumed:
         report.notes.append(
             "No MySQL version given: assumed 8.0.29 or later, where ADD COLUMN (any position) and "

@@ -14,6 +14,7 @@ from pathlib import Path
 from .config import load_config, parse_gb
 from .engine import review, review_code
 from .preflight import preflight_sql
+from .rules.rollback import sibling_rollback
 from .version import parse_version
 
 _EXIT = {"safe": 0, "review": 1, "block": 2}
@@ -51,7 +52,12 @@ def main(argv: list[str] | None = None) -> int:
     worst = 0
     results = []
     for name, sql in sources:
-        report = review_code(sql) if args.code else review(sql, schema=schema, stats=stats, mysql_version=version, free_disk_gb=free_disk)
+        if args.code:
+            report = review_code(sql)
+        else:
+            paired = name != "<stdin>" and sibling_rollback(Path(name)) is not None
+            report = review(sql, schema=schema, stats=stats, mysql_version=version,
+                            free_disk_gb=free_disk, has_rollback=paired)
         worst = max(worst, _EXIT[report.verdict])
         results.append({"file": name, **report.to_dict()})
 

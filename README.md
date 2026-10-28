@@ -13,7 +13,7 @@ The checks are deterministic rules written from DBA experience, not another LLM 
 
 ## Try it: DBA trial kit
 
-[`trial/`](trial/README.md) has 23 example migrations and 2 code samples on a small shop schema
+[`trial/`](trial/README.md) has 24 example migrations and 2 code samples on a small shop schema
 (`orders` 25M rows, `users` 2.4M), each marked with the verdict it should get. Every example
 also runs on MySQL 8.0 and 8.4 in CI. The guide is in Traditional Chinese.
 
@@ -60,6 +60,7 @@ Found a wrong result (a false alarm, a missed risk, or a fix that doesn't work)?
 | L15 | `CREATE TABLE` without a primary key, or with an engine other than InnoDB | warn | |
 | L16 | `GRANT ALL ON *.*`; grants to `'%'` or `WITH GRANT OPTION`; `DROP USER` | block / warn | |
 | L17 | A table rebuild needs more free disk than the server has (under 1.5× the table size warns) | block / warn | stats with bytes, free disk |
+| L18 | A risky change with no rollback; a `DROP` / `TRUNCATE` with no `-- backup:` note | warn | |
 
 Tables created earlier in the same script are treated as empty, so DDL on them is not flagged.
 
@@ -104,7 +105,7 @@ claude mcp add mysql-audit -- uvx mysql-audit-ai-agent
 **Claude Desktop, one click**: download `mysql-audit.mcpb` from the
 [latest release](https://github.com/jimmyjan0824/mysql_audit_ai_agent/releases/latest) and open it.
 
-Tools: `review_migration(sql, schema?, stats?, mysql_version?, free_disk_gb?)`, `review_query(sql, schema?, stats?, mysql_version?)`,
+Tools: `review_migration(sql, schema?, stats?, mysql_version?, free_disk_gb?, rollback_sql?)`, `review_query(sql, schema?, stats?, mysql_version?)`,
 `review_code(code)`, `preflight_checks(sql, mysql_version?)`, `explain_rule(rule_id)`, `list_rules()`.
 
 In our [agent evaluation](docs/agent-eval.md) Claude Code called the tool on its own in 10 of
@@ -174,7 +175,7 @@ keeps one summary comment on the pull request up to date, and fails the check on
 ```yaml
 # .github/workflows/mysql-audit.yml
 name: MySQL Audit
-on: pull_request
+on: [pull_request, pull_request_review]   # the review event lets a DBA approval re-run it
 permissions:
   contents: read
   pull-requests: write   # for the summary comment
@@ -190,9 +191,24 @@ jobs:
           # stats: db/table_rows.json     # optional row counts, enables large-table rules
           # mysql-version: 8.0.28         # optional; .mysql-audit.toml also works
           # free-disk-gb: 120             # optional, with byte stats enables L17
+          # dba-approvers: alice,bob      # optional, see below
           # code-paths: app/**/*.py       # optional SQL injection check
           # fail-on: review               # block (default), review or never
 ```
+
+When the result is review or block, the comment ends with a pre-deploy checklist and the
+[preflight SQL](#pre-deploy-checks) for the changed migrations.
+
+**DBA approval.** Some blocked changes are fine after a DBA has looked, for example a
+`DROP COLUMN` the application stopped using two releases ago. List the DBAs in
+`dba-approvers`: when one of them approves the pull request, the check passes. The approval
+must be on the latest commit, so a later push needs a new one, and a later "request changes"
+from the same person withdraws it. A ticked checkbox would not do here, because anyone who can
+edit the pull request can tick it.
+
+**Rollbacks.** Down migrations are not reviewed as changes: `*.down.sql` (golang-migrate) and
+`U<version>__*.sql` (Flyway) count as the rollback of their up file, and so do down sections
+(`-- +goose Down`, `-- migrate:down`, `-- +migrate Down`) and Liquibase `--rollback` lines.
 
 ## Development
 
@@ -219,7 +235,7 @@ MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root pytest tests/test_mysql_oracle.py
 取得 `safe` / `review` / `block` 判定，以及每個風險的行號、線上影響與安全寫法。
 規則由 DBA 經驗寫成，結果可重複驗證。
 
-DBA 想試用的話，請看 [試用包說明](trial/README.md)：裡面有 23 個可直接執行的範例 migration、
+DBA 想試用的話，請看 [試用包說明](trial/README.md)：裡面有 24 個可直接執行的範例 migration、
 用自己資料庫的 schema 與筆數檢查的方式，以及 [回報誤判的表單](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml)。
 
 ## License

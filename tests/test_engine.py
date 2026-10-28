@@ -40,7 +40,7 @@ def test_mcp_tools():
     assert mcp_server.review_migration("DELETE FROM t")["verdict"] == "block"
     assert mcp_server.explain_rule("l02")["rule_id"] == "L02"
     assert "error" in mcp_server.explain_rule("L99")
-    assert {r["rule_id"] for r in mcp_server.list_rules()} == {f"L{i:02d}" for i in range(1, 18)}
+    assert {r["rule_id"] for r in mcp_server.list_rules()} == {f"L{i:02d}" for i in range(1, 19)}
     assert mcp_server.review_query("SELECT * FROM t WHERE a = 1")["verdict"] == "safe"
     assert mcp_server.review_code('q = f"SELECT * FROM t WHERE id = {x}"')["verdict"] == "block"
 
@@ -50,7 +50,7 @@ def test_backticks_lowercase_and_comments():
 
     sql = "-- widen id\nset session lock_wait_timeout = 5;\nalter table `shop`.`Users` modify `age` bigint, algorithm=inplace, lock=none;"
     rules = [(f.rule_id, f.severity.value, f.line) for f in review(sql, schema=SCHEMA).findings]
-    assert rules == [("L02", "block", 3)]
+    assert rules == [("L02", "block", 3), ("L18", "warn", 3)]  # no rollback for a blocked change
 
 
 def test_versions_agree():
