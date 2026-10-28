@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlglot import exp
 
 from ..analysis import Analyzed
-from ..context import LARGE_TABLE_ROWS, ScriptContext
+from ..context import LARGE_TABLE_BYTES, LARGE_TABLE_ROWS, ScriptContext
 from ..models import Finding, Severity
 from .base import Rule, finding
 from .predicates import key_targeted
@@ -198,22 +198,27 @@ def _bulk_write(a: Analyzed, ctx: ScriptContext) -> tuple[str, int | None] | Non
 
 def _check_l06(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
     bulk = _bulk_write(a, ctx)
-    if not bulk or bulk[1] is None or bulk[1] < LARGE_TABLE_ROWS:
+    if not bulk:
         return []
     table, rows = bulk
+    if (rows or 0) < LARGE_TABLE_ROWS and (ctx.bytes_of(table) or 0) < LARGE_TABLE_BYTES:
+        return []
+    size = f"about {rows:,} rows" if rows is not None else ctx.describe_size(table)
     return [finding(
         "L06", Severity.WARN, a,
-        f"This write can touch a large part of `{table}` (about {rows:,} rows) in one transaction.",
+        f"This write can touch a large part of `{table}` ({size}) in one transaction.",
         "One huge transaction holds row locks until it commits, builds a large undo log, and "
         "reaches replicas as one event, so they lag while applying it.",
         "Loop over primary-key ranges (WHERE id BETWEEN x AND x+999) or use LIMIT 1000 with "
-        "ORDER BY id, commit each batch, and pause when replicas lag.",
+        "ORDER BY id, commit each batch, and pause between batches while replica lag is over "
+        "10 seconds. For deletes and archiving, pt-archiver --limit 1000 --commit-each "
+        "--check-slave-lag h=<replica> --max-lag 10 does this.",
     )]
 
 
 def _check_l09(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
     bulk = _bulk_write(a, ctx)
-    if not bulk or bulk[1] is not None:
+    if not bulk or bulk[1] is not None or ctx.bytes_of(bulk[0]) is not None:
         return []  # known size: L06 handles large tables, small ones are fine
     table, _ = bulk
     severity = Severity.WARN if ctx.knows(table) else Severity.INFO
@@ -222,8 +227,8 @@ def _check_l09(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
         f"This write on `{table}` is not limited to a key range or batch size.",
         "If the table is large, every matching row is changed in one transaction: long row "
         "locks and replication lag.",
-        "Batch it by primary-key range or LIMIT with ORDER BY id. Pass table row counts as "
-        "stats to get an exact verdict.",
+        "Batch it by primary-key range or LIMIT with ORDER BY id, pausing while replica lag is "
+        "over 10 seconds. Pass table sizes as stats to get an exact verdict.",
     )]
 
 

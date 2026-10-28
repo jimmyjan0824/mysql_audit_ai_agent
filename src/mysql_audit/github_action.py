@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .config import load_config
+from .config import load_config, parse_gb
 from .engine import review, review_code
 from .models import Report
 from .version import parse_version
@@ -159,6 +159,7 @@ def run(env: dict[str, str] | None = None) -> int:
         version = _input(env, "mysql-version") or cfg.mysql_version
         if version:
             parse_version(version)
+        free_disk = parse_gb(_input(env, "free-disk-gb")) if _input(env, "free-disk-gb") else cfg.free_disk_gb
     except (OSError, ValueError) as e:
         print(f"::error::{e}")
         return 2
@@ -184,7 +185,7 @@ def run(env: dict[str, str] | None = None) -> int:
             continue
         if matches(path, paths):
             report = review((workspace / path).read_text(encoding="utf-8", errors="replace"),
-                            schema=schema, stats=stats, mysql_version=version)
+                            schema=schema, stats=stats, mysql_version=version, free_disk_gb=free_disk)
         elif code_paths and matches(path, code_paths):
             report = review_code((workspace / path).read_text(encoding="utf-8", errors="replace"))
         else:

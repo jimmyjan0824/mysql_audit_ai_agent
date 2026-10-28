@@ -19,7 +19,12 @@ CHARSET_MAXLEN = {
 }
 DEFAULT_CHARSET = "utf8mb4"  # MySQL 8.0 default
 LARGE_TABLE_ROWS = 1_000_000  # above this, DDL and bulk writes need online tooling
+LARGE_TABLE_BYTES = 5 * 1024**3  # or above this on disk (data + indexes)
 SMALL_TABLE_ROWS = 10_000     # below this, a full scan is cheap
+
+def gb(n: int) -> str:
+    return f"{n / 1024**3:.1f} GB"
+
 
 _SET_RE = re.compile(r"(lock_wait_timeout|foreign_key_checks)=([a-z0-9_]+)$")
 
@@ -40,6 +45,8 @@ class ScriptContext:
     indexes: dict[str, list[list[str]]] = field(default_factory=dict)  # column lists, leftmost first
     uniques: dict[str, list[list[str]]] = field(default_factory=dict)  # primary key and unique keys
     rows: dict[str, int] = field(default_factory=dict)                 # approximate row counts
+    sizes: dict[str, int] = field(default_factory=dict)                # data + index bytes
+    free_disk: int | None = None    # free bytes on the server's data volume, if given
     lock_wait_timeout: int | None = None
     fk_checks_off: bool = False
     reported: set[str] = field(default_factory=set)  # once-per-script rules
@@ -69,8 +76,20 @@ class ScriptContext:
     def size(self, table: str | None) -> int | None:
         return self.rows.get(table) if table else None
 
+    def bytes_of(self, table: str | None) -> int | None:
+        return self.sizes.get(table) if table else None
+
     def is_large(self, table: str | None) -> bool:
-        return (self.size(table) or 0) >= LARGE_TABLE_ROWS
+        return (self.size(table) or 0) >= LARGE_TABLE_ROWS or (self.bytes_of(table) or 0) >= LARGE_TABLE_BYTES
+
+    def describe_size(self, table: str | None) -> str:
+        """'about 25,000,000 rows, 12.3 GB' from whatever stats were given."""
+        parts = []
+        if self.size(table) is not None:
+            parts.append(f"{self.size(table):,} rows")
+        if self.bytes_of(table) is not None:
+            parts.append(gb(self.bytes_of(table)))
+        return "about " + ", ".join(parts) if parts else "unknown size"
 
     def is_small(self, table: str | None) -> bool:
         rows = self.size(table)

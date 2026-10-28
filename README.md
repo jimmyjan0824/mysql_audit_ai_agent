@@ -9,7 +9,7 @@ Before Claude Code, Cursor or another agent runs a migration, it sends the SQL t
 every risk, the line, what will happen in production, and a safe way to write it.
 The checks are deterministic rules written from DBA experience, not another LLM guess.
 
-> Status: beta. All sixteen rules are checked against real MySQL 8.0 and 8.4 in CI. DBAs: try the [trial kit](trial/README.md) and [report wrong results](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml).
+> Status: beta. Every rule about server behavior is checked against real MySQL in CI. DBAs: try the [trial kit](trial/README.md) and [report wrong results](https://github.com/jimmyjan0824/mysql_audit_ai_agent/issues/new?template=wrong-result.yml).
 
 ## Try it: DBA trial kit
 
@@ -59,13 +59,26 @@ Found a wrong result (a false alarm, a missed risk, or a fix that doesn't work)?
 | L14 | `ADD UNIQUE` / `ADD PRIMARY KEY` on an existing table: fails on duplicates, gh-ost / pt-osc drop them silently | warn | |
 | L15 | `CREATE TABLE` without a primary key, or with an engine other than InnoDB | warn | |
 | L16 | `GRANT ALL ON *.*`; grants to `'%'` or `WITH GRANT OPTION`; `DROP USER` | block / warn | |
+| L17 | A table rebuild needs more free disk than the server has (under 1.5× the table size warns) | block / warn | stats with bytes, free disk |
 
 Tables created earlier in the same script are treated as empty, so DDL on them is not flagged.
 
 - **schema**: the current `CREATE TABLE` statements (`SHOW CREATE TABLE`).
-- **stats**: approximate row counts, `{"orders": 25000000}`, from
-  `SELECT table_name, table_rows FROM information_schema.tables WHERE table_schema = DATABASE()`.
-  Tables of 1,000,000 rows or more count as large; under 10,000 as small.
+- **stats**: approximate size per table from `information_schema.tables`, either row counts
+  (`{"orders": 25000000}`) or rows and bytes:
+
+  ```sql
+  SELECT JSON_OBJECTAGG(table_name, JSON_OBJECT(
+           'rows', table_rows, 'data_bytes', data_length, 'index_bytes', index_length))
+  FROM information_schema.tables
+  WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE';
+  ```
+
+  A table counts as large at 1,000,000 rows or 5 GB (data plus indexes), and as small under
+  10,000 rows. With bytes, L03 states how much free space a rebuild needs.
+- **free disk** (`--free-disk-gb`, `free_disk_gb`): free space on the server's data volume,
+  from `df -h /var/lib/mysql` on the host or your cloud console (RDS / Aurora: the
+  `FreeStorageSpace` metric). With table bytes it enables L17.
 
 ## Use with an AI agent (MCP)
 
@@ -91,8 +104,8 @@ claude mcp add mysql-audit -- uvx mysql-audit-ai-agent
 **Claude Desktop, one click**: download `mysql-audit.mcpb` from the
 [latest release](https://github.com/jimmyjan0824/mysql_audit_ai_agent/releases/latest) and open it.
 
-Tools: `review_migration(sql, schema?, stats?, mysql_version?)`, `review_query(sql, schema?, stats?, mysql_version?)`,
-`review_code(code)`, `explain_rule(rule_id)`, `list_rules()`.
+Tools: `review_migration(sql, schema?, stats?, mysql_version?, free_disk_gb?)`, `review_query(sql, schema?, stats?, mysql_version?)`,
+`review_code(code)`, `preflight_checks(sql, mysql_version?)`, `explain_rule(rule_id)`, `list_rules()`.
 
 In our [agent evaluation](docs/agent-eval.md) Claude Code called the tool on its own in 10 of
 10 migration tasks, with no extra prompt.
@@ -108,6 +121,24 @@ mysql-audit --code app/models/user.py      # SQL injection check
 
 Exit code: 0 safe, 1 review, 2 block, so it can gate CI.
 
+## Pre-deploy checks
+
+The review never connects to your database. What only the live server knows (open
+transactions, metadata locks, replica lag) is checked by SQL you run on the primary right
+before deploying:
+
+```bash
+mysql-audit migration.sql --preflight > preflight.sql
+mysql your_db < preflight.sql
+```
+
+The queries are scoped to the tables the migration touches, and each returns rows only when
+the deploy should wait: transactions open longer than 10 seconds, statements on those tables
+running 10 seconds or more, sessions holding or waiting for their metadata locks, and tables
+that are large right now. The script also says how to check that every replica lags 10 seconds
+or less. CI runs it against MySQL 5.7, 8.0.28, 8.0 and 8.4, with and without a blocking
+transaction.
+
 ## MySQL version and project settings
 
 Which `ALTER`s run INSTANT depends on the server version: 5.7 has no INSTANT,
@@ -116,7 +147,7 @@ and drops columns instantly. Without a version the tool assumes 8.0.29+ and says
 the result. Pass the version you deploy to, for example `8.0.28`, `5.7.44` or `aurora-3.04`:
 
 ```bash
-mysql-audit migration.sql --mysql-version 8.0.28
+mysql-audit migration.sql --mysql-version 8.0.28 --free-disk-gb 120
 ```
 
 To avoid repeating options, put a `.mysql-audit.toml` at the repository root. The CLI,
@@ -127,7 +158,8 @@ tool call win.
 ```toml
 mysql_version = "8.0.28"
 schema = "db/schema.sql"        # paths are relative to this file
-stats = "db/table_rows.json"
+stats = "db/table_stats.json"   # output of the stats query above
+free_disk_gb = 120
 ```
 
 The `MYSQL_AUDIT_VERSION` environment variable overrides `mysql_version` for the CLI and
@@ -157,6 +189,7 @@ jobs:
           schema: db/schema.sql           # optional, makes checks exact
           # stats: db/table_rows.json     # optional row counts, enables large-table rules
           # mysql-version: 8.0.28         # optional; .mysql-audit.toml also works
+          # free-disk-gb: 120             # optional, with byte stats enables L17
           # code-paths: app/**/*.py       # optional SQL injection check
           # fail-on: review               # block (default), review or never
 ```

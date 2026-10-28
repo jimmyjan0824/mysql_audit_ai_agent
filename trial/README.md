@@ -60,25 +60,37 @@ python trial/run.py -v     # 加上每一條發現的說明
 | code/parameterized.py | | safe | 參數化查詢 |
 
 我們最想聽到意見的判斷：
-1. **大表門檻**：100 萬筆以上就建議用 gh-ost / pt-online-schema-change（L03、L06）。您的經驗中門檻是多少？
+1. **大表門檻**：100 萬筆或 5 GB 以上就建議用 gh-ost / pt-online-schema-change（L03、L06）。您的經驗中門檻是多少？
 2. **lock_wait_timeout 上限 60 秒**（L04）。您平常設多少？
 3. **INT UNSIGNED 自增主鍵只給警告**（L10）。
-4. 有沒有您常見、但這 16 條規則**完全沒涵蓋**的事故類型？
+4. 有沒有您常見、但這 17 條規則**完全沒涵蓋**的事故類型？
 
 ## 3. 用您自己的 migration（5 到 10 分鐘，最有價值）
 
 ```bash
 # 現有表結構（不含資料）
 mysqldump --no-data --skip-comments your_db > schema.sql
-# 每張表的大約筆數
-mysql -N -e "SELECT JSON_OBJECTAGG(table_name, table_rows) FROM information_schema.tables WHERE table_schema = 'your_db' AND table_type = 'BASE TABLE'" > stats.json
+# 每張表的大約筆數與大小
+mysql -N -e "SELECT JSON_OBJECTAGG(table_name, JSON_OBJECT('rows', table_rows, 'data_bytes', data_length, 'index_bytes', index_length)) FROM information_schema.tables WHERE table_schema = 'your_db' AND table_type = 'BASE TABLE'" > stats.json
+# 資料磁碟剩餘空間：在主機上 df -h /var/lib/mysql，RDS / Aurora 看 FreeStorageSpace
 
-mysql-audit your_migration.sql --schema schema.sql --stats stats.json
+mysql-audit your_migration.sql --schema schema.sql --stats stats.json --free-disk-gb 120
 ```
+
+100 萬筆以上或 5 GB 以上（資料加索引）算大表。給了大小後，需要重建表的變更會寫出需要多少剩餘空間；再給 `--free-disk-gb`，空間不足時判 block（L17）。
 
 請加上實際部署的版本，例如 `--mysql-version 8.0.28`、`5.7.44` 或 `aurora-3.04`：哪些 ALTER 能 INSTANT 完成依版本而不同，沒給版本時會假設 8.0.29 以上並在結果中註明。常用的設定可以寫進專案根目錄的 `.mysql-audit.toml`（見[主 README](../README.md#mysql-version-and-project-settings)），之後只要執行 `mysql-audit your_migration.sql`。
 
 結束碼 0 = safe、1 = review、2 = block。所有判斷都在本機執行，SQL 不會傳到任何地方。
+
+正式部署前，可以產生一份只針對這次 migration 用到的表的檢查 SQL，在主庫上執行：
+
+```bash
+mysql-audit your_migration.sql --preflight > preflight.sql
+mysql your_db < preflight.sql
+```
+
+每個查詢只有在應該先暫停時才會回傳資料列：超過 10 秒的交易、在這些表上跑了 10 秒以上的查詢、持有或等待這些表 metadata lock 的連線，以及目前已經是大表的表。腳本最後也會說明如何確認每台從庫的延遲在 10 秒以內。
 
 ## 4. 回報誤判
 

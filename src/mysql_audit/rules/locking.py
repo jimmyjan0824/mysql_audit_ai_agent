@@ -28,7 +28,8 @@ def _check_l04(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
         "L04", Severity.WARN, a, message,
         "If a long transaction holds the table, the DDL waits for its metadata lock, and every "
         "query on that table queues behind the DDL. The application stalls.",
-        "Put SET SESSION lock_wait_timeout = 5; before the DDL and retry on timeout.",
+        "Put SET SESSION lock_wait_timeout = 5; before the DDL and retry on timeout. Just before "
+        "deploying, run the SQL from mysql-audit --preflight to find long transactions on the table.",
     )]
 
 
