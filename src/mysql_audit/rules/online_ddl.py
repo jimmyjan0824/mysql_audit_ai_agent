@@ -29,6 +29,12 @@ _VAR_TYPES = {exp.DataType.Type.VARCHAR, exp.DataType.Type.VARBINARY}
 
 # -- L01 -------------------------------------------------------------------
 
+def _all_instant(a: Analyzed, ctx: ScriptContext) -> bool:
+    """Every ADD / DROP COLUMN clause runs INSTANT on the target server."""
+    return all(ctx.instant_column_change(c.kind, c.words)
+               for c in a.clauses if c.kind in ("add_column", "drop_column"))
+
+
 def _check_l01(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
     if a.kind not in ("alter_table", "create_index", "drop_index") or ctx.is_new(a.table):
         return []
@@ -46,9 +52,20 @@ def _check_l01(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
             "run the change with gh-ost or pt-online-schema-change instead.",
         )]
 
+    if a.algorithm == "INSTANT" and not _all_instant(a, ctx):
+        server = f"MySQL {ctx.version}" if ctx.version else "This server"
+        return [finding(
+            "L01", Severity.WARN, a,
+            f"{server} cannot run this change on `{a.table}` with ALGORITHM=INSTANT, so the statement fails.",
+            "ADD COLUMN ... AFTER / FIRST and DROP COLUMN are INSTANT only from 8.0.29, plain ADD "
+            "COLUMN from 8.0.12; MySQL 5.7 has no INSTANT. The migration stops with an error.",
+            "Use ALGORITHM=INPLACE, LOCK=NONE, which rebuilds the table online; on a large table "
+            "run it with gh-ost or pt-online-schema-change.",
+        )]
+
     if a.algorithm is None:
-        if a.kind == "alter_table" and kinds <= _INSTANT_FRIENDLY:
-            suggestion = "ALGORITHM=INSTANT (ADD COLUMN on 8.0.12+, DROP COLUMN on 8.0.29+)"
+        if a.kind == "alter_table" and kinds <= _INSTANT_FRIENDLY and _all_instant(a, ctx):
+            suggestion = "ALGORITHM=INSTANT"
         else:
             suggestion = "ALGORITHM=INPLACE, LOCK=NONE"
         blocking_index = bool(_BLOCKING_INDEX & set(a.stmt.words))
@@ -240,9 +257,10 @@ L02 = Rule(
 
 # -- L03 -------------------------------------------------------------------
 
-# Clauses MySQL 8.0 can apply without touching rows (INSTANT or metadata only).
-# Dropping an index only removes it from the data dictionary and frees its pages.
-_NO_ROW_WORK = _METADATA_ONLY | {"add_column", "drop_column", "drop_index"}
+# Clauses MySQL 8.0 can apply without touching rows (metadata only). ADD / DROP
+# COLUMN join them when the server runs them INSTANT. Dropping an index only
+# removes it from the data dictionary and frees its pages.
+_NO_ROW_WORK = _METADATA_ONLY | {"drop_index"}
 
 
 _METADATA_ONLY_CHANGES = {
@@ -271,7 +289,9 @@ def _check_l03(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
     if a.kind not in ("alter_table", "create_index") or ctx.is_new(a.table) or not ctx.is_large(a.table):
         return []
     if a.kind == "alter_table" and all(
-        c.kind in _NO_ROW_WORK or (c.kind in ("modify", "change") and _metadata_only_change(a, ctx, c))
+        c.kind in _NO_ROW_WORK
+        or (c.kind in ("add_column", "drop_column") and ctx.instant_column_change(c.kind, c.words))
+        or (c.kind in ("modify", "change") and _metadata_only_change(a, ctx, c))
         for c in a.clauses
     ):
         return []

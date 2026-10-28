@@ -10,6 +10,7 @@ from sqlglot import exp
 
 from .analysis import Analyzed
 from .splitter import split_top_level
+from .version import Version
 
 # Bytes per character, for the VARCHAR length-prefix boundary (255 bytes).
 CHARSET_MAXLEN = {
@@ -42,6 +43,19 @@ class ScriptContext:
     lock_wait_timeout: int | None = None
     fk_checks_off: bool = False
     reported: set[str] = field(default_factory=set)  # once-per-script rules
+    version: Version | None = None  # target server; None = assume 8.0.29 or later
+    version_assumed: bool = False   # a judgment depended on that assumption
+
+    def instant_column_change(self, kind: str, words: list[str]) -> bool:
+        """True when ADD COLUMN / DROP COLUMN runs INSTANT on the target server."""
+        positioned = "AFTER" in words or "FIRST" in words
+        if self.version is None:
+            if kind == "drop_column" or positioned:
+                self.version_assumed = True
+            return True
+        if kind == "drop_column" or positioned:
+            return self.version.instant_add_anywhere
+        return self.version.instant_add_last
 
     def is_new(self, table: str | None) -> bool:
         """Tables created earlier in the same script are empty: no lock risk."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 from mcp.server.mcpserver import MCPServer
 
 from . import __version__
+from .config import load_config
 from .engine import review
 from .engine import review_code as _review_code
 from .rules import RULES
@@ -17,14 +18,30 @@ server = MCPServer(
         "UPDATE/DELETE, review_query for queries you add to application code, and review_code "
         "for code that builds SQL. If the verdict is 'block', do not run or commit it; rewrite "
         "it using each finding's fix and review again. If it is 'review', tell the user about "
-        "the findings. For exact results pass the CREATE TABLE statements as schema and row "
-        "counts from information_schema.tables as stats."
+        "the findings. For exact results pass the CREATE TABLE statements as schema, row "
+        "counts from information_schema.tables as stats, and the server's version as "
+        "mysql_version. A .mysql-audit.toml in the project supplies any of these you leave out."
     ),
 )
 
 
+def _review(sql: str, schema: str | None, stats: dict | None, mysql_version: str | None) -> dict:
+    """Fill what the call leaves out from .mysql-audit.toml / MYSQL_AUDIT_VERSION, then review."""
+    try:
+        cfg = load_config()
+        report = review(sql, schema=schema or cfg.schema, stats=stats or cfg.stats,
+                        mysql_version=mysql_version or cfg.mysql_version)
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+    if cfg.path and not (schema and stats and mysql_version):
+        report.notes.append(f"Settings not passed in the call were read from {cfg.path}.")
+    return report.to_dict()
+
+
 @server.tool()
-def review_migration(sql: str, schema: str | None = None, stats: dict[str, int] | None = None) -> dict:
+def review_migration(
+    sql: str, schema: str | None = None, stats: dict[str, int] | None = None, mysql_version: str | None = None
+) -> dict:
     """Review MySQL DDL or a migration script for locking, data-loss and replication risks.
 
     Args:
@@ -33,20 +50,25 @@ def review_migration(sql: str, schema: str | None = None, stats: dict[str, int] 
             SHOW CREATE TABLE). Makes column-type and index checks exact.
         stats: Optional approximate row count per table, e.g. {"orders": 25000000}, from
             SELECT table_name, table_rows FROM information_schema.tables.
+        mysql_version: Optional target server version, e.g. "8.0.28", "8.4.3" or
+            "aurora-3.04" (SELECT VERSION()). Older servers copy the table for more
+            column changes. Without it, 8.0.29 or later is assumed.
 
     Returns a verdict (safe / review / block) and findings with line, impact and fix.
     """
-    return review(sql, schema=schema, stats=stats).to_dict()
+    return _review(sql, schema, stats, mysql_version)
 
 
 @server.tool()
-def review_query(sql: str, schema: str | None = None, stats: dict[str, int] | None = None) -> dict:
+def review_query(
+    sql: str, schema: str | None = None, stats: dict[str, int] | None = None, mysql_version: str | None = None
+) -> dict:
     """Review queries an application will run (SELECT / UPDATE / DELETE / INSERT) for missing
     indexes, unbatched writes and unsafe UPDATE/DELETE. Pass schema for index checks.
 
     Returns a verdict (safe / review / block) and findings with line, impact and fix.
     """
-    return review(sql, schema=schema, stats=stats).to_dict()
+    return _review(sql, schema, stats, mysql_version)
 
 
 @server.tool()
