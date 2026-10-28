@@ -293,9 +293,11 @@ def test_grant_all_and_drop_user(db):
         cur.execute(f"CREATE USER '{user}'@'%' IDENTIFIED BY '{password}'")
         try:
             cur.execute(f"GRANT ALL PRIVILEGES ON *.* TO '{user}'@'%'")
-            cur.execute(f"SHOW GRANTS FOR '{user}'@'%'")
-            assert any("ALL PRIVILEGES ON *.*" in row[0] for row in cur.fetchall())
-            _connect(user=user, password=password).close()  # logs in from any host
+            other = _connect(user=user, password=password)  # logs in from any host
+            with other.cursor() as cur2:  # and can drop any database on the server
+                cur2.execute("CREATE DATABASE mysql_audit_tmp_db")
+                cur2.execute("DROP DATABASE mysql_audit_tmp_db")
+            other.close()
 
             cur.execute(f"DROP USER '{user}'@'%'")
             with pytest.raises(pymysql.MySQLError) as err:
