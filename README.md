@@ -112,6 +112,21 @@ connected with `claude mcp list` (it should show `mysql-audit ... ✓ Connected`
 inside Claude Code to see the tools. Then ask Claude to review a migration, or just let it run one:
 it calls `review_migration` on its own. Remove it with `claude mcp remove mysql-audit`.
 
+**`/mcp` says `Failed to reconnect to mysql-audit: ENOENT`?** Claude Code cannot find the
+`uvx` command: uv is not installed, or it is installed in a folder that is not on the PATH
+Claude Code was started with.
+
+```bash
+which uvx                                              # where is uvx?
+curl -LsSf https://astral.sh/uv/install.sh | sh        # if not found: install uv, then open a new terminal
+claude mcp remove mysql-audit                          # re-add it with the full path to uvx
+claude mcp add mysql-audit --scope user -- "$(which uvx)" mysql-audit-ai-agent@latest
+claude mcp list                                        # should show mysql-audit ... ✓ Connected
+```
+
+Restart Claude Code (or reconnect in `/mcp`) afterwards. The first start downloads the
+package and can take a few seconds.
+
 **Cursor, Windsurf, Claude Desktop and other MCP clients** (`mcp.json` / `claude_desktop_config.json`):
 
 ```json
@@ -389,6 +404,7 @@ the MCP server). To upgrade:
 | --- | --- |
 | `uvx mysql-audit-ai-agent` prints nothing and seems to hang | Expected: it is the MCP server waiting for a client. Press Ctrl+C. Add it to your agent's MCP config, and use `mysql-audit` to review files yourself |
 | `pip install` fails with `externally-managed-environment` | Install in a virtual environment: `python3 -m venv .venv && source .venv/bin/activate`, or use `uv tool install mysql-audit-ai-agent` |
+| Claude Code `/mcp` shows `Failed to reconnect to mysql-audit: ENOENT` | uvx is not installed or not on Claude Code's PATH. Install uv if `which uvx` finds nothing, then re-add the server with the full path: `claude mcp add mysql-audit --scope user -- "$(which uvx)" mysql-audit-ai-agent@latest` (see [Claude Code](#use-with-an-ai-agent-mcp)) |
 | Desktop app shows `spawn uvx ENOENT` | Use the full path from `which uvx` as the `command` |
 | First start of the MCP server times out | The first run downloads the package. Run `uvx --from mysql-audit-ai-agent mysql-audit --help` once, then restart the client |
 | Results differ from this README | You may have an old cached copy; see [Version and upgrades](#version-and-upgrades) |
