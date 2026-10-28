@@ -1,5 +1,7 @@
 # MySQL Audit DBA 試用包
 
+[English](README.en.md) | **繁體中文**
+
 MySQL Audit 會在 migration 和查詢**執行之前**審查它們，找出會鎖表、整表複製、遺失資料、拖垮複寫的寫法，並附上安全的改寫方式。主要使用者是 Claude Code、Cursor 這類 AI 程式助理，也可以用命令列或 GitHub Action 執行。
 
 我們想請您用 DBA 的經驗檢查：**它的判斷對不對？漏了什麼？建議做法實際可行嗎？** 大約 10 到 20 分鐘。
@@ -91,7 +93,7 @@ mysql-audit your_migration.sql --schema schema.sql --stats stats.json --free-dis
 
 100 萬筆以上或 5 GB 以上（資料加索引）算大表。給了大小後，需要重建表的變更會寫出需要多少剩餘空間；再給 `--free-disk-gb`，空間不足時判 block（L17）。
 
-請加上實際部署的版本，例如 `--mysql-version 8.0.28`、`5.7.44` 或 `aurora-3.04`：哪些 ALTER 能 INSTANT 完成依版本而不同，沒給版本時會假設 8.0.29 以上並在結果中註明。常用的設定可以寫進專案根目錄的 `.mysql-audit.toml`（見[主 README](../README.md#mysql-version-and-project-settings)），之後只要執行 `mysql-audit your_migration.sql`。
+請加上實際部署的版本，例如 `--mysql-version 8.0.28`、`5.7.44` 或 `aurora-3.04`：哪些 ALTER 能 INSTANT 完成依版本而不同，沒給版本時會假設 8.0.29 以上並在結果中註明。常用的設定可以寫進專案根目錄的 `.mysql-audit.toml`（見[主說明文件](../README.zh-TW.md#專案設定mysql-audittoml)），之後只要執行 `mysql-audit your_migration.sql`。
 
 結束碼 0 = safe、1 = review、2 = block。所有判斷都在本機執行，SQL 不會傳到任何地方。
 
@@ -117,4 +119,4 @@ mysql your_db < preflight.sql
   用 `claude mcp list` 確認顯示 `mysql-audit ... ✓ Connected`，或在 Claude Code 裡輸入 `/mcp` 看到 `review_migration`、`preflight_checks` 等工具就代表接上了。
   移除用 `claude mcp remove mysql-audit`。
   注意：`uvx mysql-audit-ai-agent` 是給 AI 工具啟動的 MCP 伺服器，自己在終端機執行時不會有任何輸出、看起來像卡住，這是正常的（它在等 MCP 客戶端連線），按 Ctrl+C 離開即可。自己審查 SQL 檔請用上面的 `mysql-audit` 指令。
-- **GitHub Action**：每個 PR 自動審查改到的 migration，設定見[主 README](../README.md#github-action)。
+- **GitHub Action**：每個 PR 自動審查改到的 migration，設定見[主說明文件](../README.zh-TW.md#github-action)。
