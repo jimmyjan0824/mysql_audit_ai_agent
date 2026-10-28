@@ -3,9 +3,9 @@
   "manifest_version": "0.4",
   "name": "mysql-audit",
   "display_name": "MySQL Audit",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "MySQL migration and query safety review for AI agents: locks, table copies, data loss, injection.",
-  "long_description": "Reviews MySQL DDL, migration scripts, queries and application code before they run. Flags table copies and write locks (Online DDL ALGORITHM/LOCK), metadata-lock stalls, foreign keys added with checks on, data loss from DROP/RENAME, unbatched backfills, queries without a usable index, integer overflow and SQL built by string concatenation. Each finding comes with the impact and a safe rewrite. Runs locally; your SQL never leaves your machine.",
+  "long_description": "Reviews MySQL DDL, migration scripts, queries and application code before they run. Flags table copies and write locks (Online DDL ALGORITHM/LOCK), metadata-lock stalls, foreign keys added with checks on, data loss from DROP/RENAME, rebuilds that do not fit on disk, missing rollbacks and backups, unbatched backfills, queries without a usable index, integer overflow and SQL built by string concatenation. Judges INSTANT DDL by the target MySQL version (5.7, 8.0, 8.4, Aurora). Each finding comes with the impact and a safe rewrite. Runs locally; your SQL never leaves your machine.",
   "author": {
     "name": "jimmyjan0824",
     "url": "https://github.com/jimmyjan0824"
@@ -27,6 +27,7 @@
   "tools": [
     {"name": "review_migration", "description": "Review MySQL DDL or a migration script for locking, data-loss and replication risks."},
     {"name": "review_query", "description": "Review application queries for missing indexes, full scans and unsafe writes."},
+    {"name": "preflight_checks", "description": "SQL to run on the primary right before a deploy: long transactions, metadata locks, replica lag."},
     {"name": "review_code", "description": "Find SQL built by string concatenation or interpolation in application code."},
     {"name": "explain_rule", "description": "Explain one rule: why it matters and a safe example."},
     {"name": "list_rules", "description": "List every rule with its id, title and default severity."}
