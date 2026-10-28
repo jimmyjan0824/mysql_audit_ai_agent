@@ -331,7 +331,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: jimmyjan0824/mysql_audit_ai_agent@v0.3.1
+      - uses: jimmyjan0824/mysql_audit_ai_agent@v0.3.2
         with:
           paths: db/migrate/**/*.sql      # default: **/*.sql
           schema: db/schema.sql           # optional, makes checks exact
