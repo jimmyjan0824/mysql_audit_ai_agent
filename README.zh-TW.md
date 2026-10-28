@@ -145,7 +145,7 @@ claude mcp add mysql-audit --scope user -- uvx mysql-audit-ai-agent@latest
 
 ```text
 mysql-audit [檔案 ...] [--schema 檔案] [--stats 檔案] [--mysql-version 版本]
-            [--free-disk-gb GB] [--config 檔案] [--format text|json]
+            [--free-disk-gb GB] [--config 檔案] [--format text|json] [--color auto|always|never]
             [--code] [--preflight] [--version]
 ```
 
@@ -158,6 +158,7 @@ mysql-audit [檔案 ...] [--schema 檔案] [--stats 檔案] [--mysql-version 版
 | `--free-disk-gb GB` | 資料磁碟的剩餘空間；搭配位元組大小啟用 L17 |
 | `--config 檔案` | 設定檔（預設：最近的 `.mysql-audit.toml`） |
 | `--format json` | 輸出 JSON，方便程式處理 |
+| `--color auto\|always\|never` | 文字輸出上色：`[block]` 行紅色、`[warn]` 行黃色，判定依結果顯示紅 / 黃 / 綠。`auto`（預設）只在終端機上色，並遵守 `NO_COLOR` / `FORCE_COLOR` 環境變數 |
 | `--code` | 檔案是應用程式碼：檢查 SQL injection |
 | `--preflight` | 不審查，改為輸出這些 migration 的部署前檢查 SQL |
 | `--version` | 顯示目前安裝的版本 |

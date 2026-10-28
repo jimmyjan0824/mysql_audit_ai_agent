@@ -83,3 +83,32 @@ def test_version_flag(capsys, monkeypatch):
     monkeypatch.setattr("sys.argv", ["mysql-audit-ai-agent", "--version"])
     mcp_server.main()  # prints and returns instead of starting the server
     assert capsys.readouterr().out.strip() == f"mysql-audit-ai-agent {mysql_audit.__version__}"
+
+
+def test_color_output(tmp_path, capsys, monkeypatch):
+    from mysql_audit import cli
+
+    sql = tmp_path / "m.sql"
+    sql.write_text("ALTER TABLE t DROP COLUMN c;\nUPDATE t SET a = 1 LIMIT 10;\n")
+    red, yellow, reset = "\033[31m", "\033[33m", "\033[0m"
+
+    assert cli.main([str(sql), "--color", "always"]) == 2
+    out = capsys.readouterr().out
+    assert "\033[1;31mBLOCK" + reset in out
+    lines = out.splitlines()
+    assert any(l.startswith(red + "  line ") and "[block]" in l and l.endswith(reset) for l in lines)
+    assert any(l.startswith(yellow + "  line ") and "[warn]" in l for l in lines)
+    assert all(not l.startswith("\033") for l in lines if "fix:" in l)
+
+    cli.main([str(sql), "--color", "never"])
+    assert "\033[" not in capsys.readouterr().out
+    cli.main([str(sql)])  # auto: captured output is not a terminal
+    assert "\033[" not in capsys.readouterr().out
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    cli.main([str(sql)])
+    assert red in capsys.readouterr().out
+    monkeypatch.setenv("NO_COLOR", "1")
+    cli.main([str(sql)])
+    assert "\033[" not in capsys.readouterr().out
+    cli.main([str(sql), "--color", "always", "--format", "json"])
+    assert "\033[" not in capsys.readouterr().out

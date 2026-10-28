@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -19,6 +20,26 @@ from .rules.rollback import sibling_rollback
 from .version import parse_version
 
 _EXIT = {"safe": 0, "review": 1, "block": 2}
+# ANSI colors: block red, warn / review yellow, safe green.
+_COLORS = {"block": "31", "warn": "33", "review": "33", "safe": "32"}
+
+
+def _use_color(choice: str) -> bool:
+    """--color auto: only on a terminal, unless NO_COLOR is set (https://no-color.org)."""
+    if choice != "auto":
+        return choice == "always"
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    return sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
+
+
+def _paint(text: str, level: str, on: bool, bold: bool = False) -> str:
+    code = _COLORS.get(level)
+    if not on or not code:
+        return text
+    return f"\033[{'1;' if bold else ''}{code}m{text}\033[0m"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--free-disk-gb", help="free space on the server's data volume, in GB (enables L17)")
     parser.add_argument("--config", help="settings file (default: the nearest .mysql-audit.toml)")
     parser.add_argument("--format", choices=("text", "json"), default="text")
+    parser.add_argument("--color", choices=("auto", "always", "never"), default="auto",
+                        help="color text output: block red, warn yellow (default: auto, only on a terminal)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args(argv)
 
@@ -66,11 +89,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.format == "json":
         print(json.dumps(results if len(results) > 1 else results[0], indent=2, ensure_ascii=False))
     else:
+        color = _use_color(args.color)
+        if color and sys.platform == "win32":
+            os.system("")  # turns on ANSI escape handling in the Windows console
         for r in results:
             counted = "" if args.code else f" ({r['statements']} statements)"
-            print(f"{r['file']}: {r['verdict'].upper()}{counted}")
+            verdict = _paint(r["verdict"].upper(), r["verdict"], color, bold=True)
+            print(f"{r['file']}: {verdict}{counted}")
             for f in r["findings"]:
-                print(f"  line {f['line']} [{f['severity']}] {f['rule_id']}: {f['message']}")
+                line = f"  line {f['line']} [{f['severity']}] {f['rule_id']}: {f['message']}"
+                print(_paint(line, f["severity"], color))
                 print(f"    fix: {f['fix']}")
     return worst
 
