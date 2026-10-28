@@ -16,7 +16,7 @@ The checks are deterministic rules written from DBA experience, not another LLM 
 | ID  | Checks | Default | Needs |
 | --- | --- | --- | --- |
 | L01 | DDL without explicit `ALGORITHM` / `LOCK`; `ALGORITHM=COPY`, `LOCK=SHARED/EXCLUSIVE` | warn / block | |
-| L02 | Column changes that force a table copy: type change, VARCHAR shrink or crossing 255 bytes, ENUM reorder, charset conversion, dropping the PK | block | schema for exact answers |
+| L02 | Column changes that force a table copy: type change, VARCHAR shrink or crossing 255 bytes, ENUM reorder, charset conversion, dropping the PK, adding a STORED generated column | block | schema for exact answers |
 | L03 | Row-touching DDL on a large table: use gh-ost / pt-online-schema-change | warn | stats |
 | L04 | DDL without a short `SET SESSION lock_wait_timeout` (metadata-lock pile-up) | warn | |
 | L05 | `ADD FOREIGN KEY` while `foreign_key_checks=1` (COPY only) | block | |

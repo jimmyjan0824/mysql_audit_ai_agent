@@ -199,6 +199,14 @@ def _check_l02(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
                 "MySQL copies the whole table and blocks writes until it finishes.",
                 "Run the conversion with gh-ost or pt-online-schema-change during a quiet period.",
             ))
+        elif c.kind == "add_stored_column":
+            out.append(finding(
+                "L02", Severity.BLOCK, a,
+                f"Adding the STORED generated column `{c.column}` to `{a.table}` needs a full table copy.",
+                "MySQL computes the value for every row with ALGORITHM=COPY and blocks writes until it finishes.",
+                "Add it as a VIRTUAL column instead (INSTANT or INPLACE, and it can still be indexed), "
+                "or run the change with gh-ost or pt-online-schema-change.",
+            ))
         elif c.kind == "drop_pk" and "add_pk" not in kinds:
             out.append(finding(
                 "L02", Severity.BLOCK, a,
@@ -215,7 +223,8 @@ L02 = Rule(
     severity=Severity.BLOCK,
     why=(
         "Changing a column's data type (INT to BIGINT, shrinking a VARCHAR, VARCHAR growing past "
-        "255 bytes, reordering ENUM members, converting the character set) can only run with "
+        "255 bytes, reordering ENUM members, converting the character set) or adding a STORED "
+        "generated column can only run with "
         "ALGORITHM=COPY. MySQL rebuilds the table and blocks every write until it finishes. "
         "Growing a VARCHAR inside the same length-prefix size, or appending ENUM members, is online."
     ),
@@ -232,7 +241,8 @@ L02 = Rule(
 # -- L03 -------------------------------------------------------------------
 
 # Clauses MySQL 8.0 can apply without touching rows (INSTANT or metadata only).
-_NO_ROW_WORK = _METADATA_ONLY | {"add_column", "drop_column"}
+# Dropping an index only removes it from the data dictionary and frees its pages.
+_NO_ROW_WORK = _METADATA_ONLY | {"add_column", "drop_column", "drop_index"}
 
 
 _METADATA_ONLY_CHANGES = {

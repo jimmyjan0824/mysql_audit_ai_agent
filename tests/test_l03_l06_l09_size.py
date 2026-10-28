@@ -22,6 +22,8 @@ L03_CASES = [
     ("ALTER TABLE `shop`.`orders` ADD INDEX i (a)" + OPT, ["warn"]),
     ("ALTER TABLE users ADD COLUMN note INT, ALGORITHM=INSTANT", []),
     ("ALTER TABLE users RENAME INDEX a TO b", []),
+    ("ALTER TABLE users DROP INDEX idx_email" + OPT, []),  # metadata only
+    ("ALTER TABLE users ADD COLUMN a2 INT AS (age * 2) STORED", ["warn"]),
     ("ALTER TABLE tags ADD INDEX i (a)" + OPT, []),
     ("ALTER TABLE unknown_table ADD INDEX i (a)" + OPT, []),
 ]

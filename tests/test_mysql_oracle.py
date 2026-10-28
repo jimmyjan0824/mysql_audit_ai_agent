@@ -37,7 +37,7 @@ CREATE TABLE users (
   age INT
 ) DEFAULT CHARSET=utf8mb4;
 CREATE TABLE legacy (title VARCHAR(80)) DEFAULT CHARSET=utf8mb3;
-CREATE TABLE plain (id INT NOT NULL PRIMARY KEY, note VARCHAR(10));
+CREATE TABLE plain (id INT NOT NULL PRIMARY KEY, note VARCHAR(10), KEY idx_note (note));
 """
 
 ROWS = """
@@ -61,6 +61,8 @@ CASES = [
     ("", "ALTER TABLE users MODIFY code VARCHAR(200) CHARACTER SET utf8mb4", "L02", False),
     ("", "ALTER TABLE users CONVERT TO CHARACTER SET utf8mb4", "L02", False),
     ("", "ALTER TABLE plain DROP PRIMARY KEY", "L02", False),
+    ("", "ALTER TABLE users ADD COLUMN age2 INT AS (age * 2) STORED", "L02", False),
+    ("", "ALTER TABLE users ADD COLUMN age2 INT AS (age * 2) VIRTUAL", "L02", True),
     ("", "ALTER TABLE users MODIFY name VARCHAR(60) NOT NULL", "L02", True),
     ("", "ALTER TABLE users MODIFY code VARCHAR(250) CHARACTER SET latin1", "L02", True),
     ("", "ALTER TABLE legacy MODIFY title VARCHAR(85)", "L02", True),
@@ -80,6 +82,8 @@ L01_CASES = [
     ("ALTER TABLE users ADD COLUMN note INT, ADD INDEX idx_note (note)", True),
     ("ALTER TABLE users ADD FULLTEXT INDEX ft (name)", False),
     ("ALTER TABLE users MODIFY age BIGINT", False),
+    ("ALTER TABLE users ADD COLUMN age2 INT AS (age * 2) STORED", False),
+    ("ALTER TABLE plain DROP INDEX idx_note", True),
 ]
 
 

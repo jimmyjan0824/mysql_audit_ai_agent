@@ -15,6 +15,8 @@ POSITIVE = [
     "ALTER TABLE users MODIFY code VARCHAR(200) CHARACTER SET utf8mb4",     # charset change
     "ALTER TABLE users CONVERT TO CHARACTER SET utf8mb4",
     "ALTER TABLE users DROP PRIMARY KEY",
+    "ALTER TABLE users ADD COLUMN age2 INT AS (age * 2) STORED",            # computed for every row
+    "ALTER TABLE users ADD COLUMN age2 INT GENERATED ALWAYS AS (age * 2) STORED",
 ]
 
 NEGATIVE = [
@@ -25,6 +27,8 @@ NEGATIVE = [
     "ALTER TABLE users MODIFY age INT NOT NULL",                            # nullability only
     "ALTER TABLE users DROP PRIMARY KEY, ADD PRIMARY KEY (id, email)",
     "CREATE TABLE t2 (a INT); ALTER TABLE t2 MODIFY a BIGINT",
+    "ALTER TABLE users ADD COLUMN age2 INT AS (age * 2) VIRTUAL",
+    "ALTER TABLE users ADD COLUMN age2 INT AS (age * 2)",                   # VIRTUAL by default
 ]
 
 
