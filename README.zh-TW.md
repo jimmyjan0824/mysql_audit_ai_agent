@@ -351,6 +351,23 @@ jobs:
 | `uvx`（包括 MCP 設定） | uvx 會沿用快取的舊版：在設定中改用 `uvx mysql-audit-ai-agent@latest`，每次啟動都會檢查 PyPI；或執行一次 `uv cache clean mysql-audit-ai-agent` |
 | GitHub Action | 把 workflow 裡的 `@vX.Y.Z` 改成新版 tag |
 
+### 在 Claude Code 中更新
+
+如果加入時用的是 `@latest`（如[搭配 AI 助理使用](#搭配-ai-助理使用mcp)所示），新版發佈後不必重新安裝：
+
+1. 重新啟動 Claude Code，或輸入 `/mcp`，選 `mysql-audit` 後按 **Reconnect**。uvx 在伺服器啟動時會檢查 PyPI 並下載新版。
+2. 確認版本：`uvx mysql-audit-ai-agent@latest --version`。
+3. 還是舊版？先用 `uv cache clean mysql-audit-ai-agent` 清掉快取，再重新啟動 Claude Code。新版剛發佈時，PyPI 可能要一兩分鐘才查得到。
+
+如果當初加入時沒有 `@latest`（`claude mcp list` 顯示的是不帶版本的 `uvx mysql-audit-ai-agent`），請重新加入一次，之後就會自動更新：
+
+```bash
+claude mcp remove mysql-audit
+claude mcp add mysql-audit --scope user -- "$(which uvx)" mysql-audit-ai-agent@latest
+```
+
+團隊透過 `.mcp.json` 共用的話，把 `--scope user` 改成 `--scope project`。
+
 ## 疑難排解
 
 | 狀況 | 解法 |

@@ -398,6 +398,27 @@ the MCP server). To upgrade:
 | `uvx` (MCP config) | uvx reuses its cached copy; use `uvx mysql-audit-ai-agent@latest` in the config to check PyPI on every start, or run `uv cache clean mysql-audit-ai-agent` once |
 | GitHub Action | change the `@vX.Y.Z` tag in the workflow to the new release |
 
+### Updating in Claude Code
+
+If you added the server with `@latest` (as in [Use with an AI agent](#use-with-an-ai-agent-mcp)),
+a new release needs no reinstall:
+
+1. Restart Claude Code, or type `/mcp`, pick `mysql-audit` and choose **Reconnect**. uvx checks
+   PyPI as the server starts and downloads the new version.
+2. Confirm the version: `uvx mysql-audit-ai-agent@latest --version`.
+3. Still the old version? Clear the cached copy with `uv cache clean mysql-audit-ai-agent`, then
+   restart Claude Code. A release can take a minute or two to appear on PyPI.
+
+If you added it without `@latest` (`claude mcp list` shows `uvx mysql-audit-ai-agent` with no
+version), add it again so later updates are automatic:
+
+```bash
+claude mcp remove mysql-audit
+claude mcp add mysql-audit --scope user -- "$(which uvx)" mysql-audit-ai-agent@latest
+```
+
+Use `--scope project` instead if the team shares the server through `.mcp.json`.
+
 ## Troubleshooting
 
 | Problem | Fix |

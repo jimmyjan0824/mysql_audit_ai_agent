@@ -150,6 +150,8 @@ all very welcome.
   team gets it on commit. `claude mcp list` should show `mysql-audit ... ✓ Connected`, or type
   `/mcp` in Claude Code to see `review_migration`, `preflight_checks` and the other tools.
   Remove it with `claude mcp remove mysql-audit`.
+  To get a new release, restart Claude Code or Reconnect it in `/mcp`; see
+  [Updating in Claude Code](../README.md#updating-in-claude-code).
   Note: `uvx mysql-audit-ai-agent` is the MCP server that AI tools start. Run by hand in a
   terminal it prints nothing and seems to hang; that is expected (it is waiting for an MCP
   client). Press Ctrl+C. To review SQL files yourself, use the `mysql-audit` command above.
