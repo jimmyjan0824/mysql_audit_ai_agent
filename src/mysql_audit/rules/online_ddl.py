@@ -74,7 +74,8 @@ def _check_l01(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
             return [finding(
                 "L01", Severity.INFO, a,
                 f"No ALGORITHM is given for DDL on `{a.table}`; MySQL will pick an online algorithm here.",
-                "None expected: these operations never fall back to COPY, though INPLACE may still rebuild the table.",
+                _MDL_NOTE + (" At the end it also applies the writes made during the rebuild while holding that lock."
+                             if _rebuilds(a, ctx) else ""),
                 f"Add {suggestion} anyway, so a reviewer sees the intended algorithm and MySQL errors out if it differs.",
             )]
         return [finding(
@@ -92,6 +93,14 @@ def _check_l01(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
             "Add LOCK=NONE so the statement fails rather than blocking writes.",
         )]
     return []
+
+
+# Online DDL is not lock-free; say so wherever a finding calls an ALTER online.
+_MDL_NOTE = (
+    "It will not fall back to a table copy, but online is not lock-free: MySQL takes an exclusive "
+    "metadata lock briefly at the start and again at the end. While it waits for that lock (behind "
+    "any open transaction on the table), every new query on the table waits too."
+)
 
 
 L01 = Rule(
@@ -315,6 +324,9 @@ def _check_l03(a: Analyzed, ctx: ScriptContext) -> list[Finding]:
     if a.kind == "alter_table" and not any(_row_work(a, ctx, c) for c in a.clauses):
         return []
     consequence = (
+        "Online does not mean lock-free: the ALTER takes an exclusive metadata lock at the start and "
+        "at the end, and at the end it applies the writes buffered during the build while holding it, "
+        "so reads and writes on the table stop for that step. "
         "Even an online ALTER runs for a long time, holds undo, and replicas apply it only after "
         "the primary finishes, so they fall behind by the full duration. Writes made meanwhile "
         "are buffered in the online alter log; past innodb_online_alter_log_max_size (default "

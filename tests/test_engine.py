@@ -112,3 +112,21 @@ def test_color_output(tmp_path, capsys, monkeypatch):
     assert "\033[" not in capsys.readouterr().out
     cli.main([str(sql), "--color", "always", "--format", "json"])
     assert "\033[" not in capsys.readouterr().out
+
+
+def test_online_ddl_is_not_described_as_lock_free():
+    """An online ALTER still takes an exclusive metadata lock at its start and end."""
+    from mysql_audit import mcp_server
+
+    schema = "CREATE TABLE u (id BIGINT NOT NULL PRIMARY KEY, name VARCHAR(32)) ENGINE=InnoDB;"
+    report = review("ALTER TABLE u ADD COLUMN test INT;", schema=schema,
+                    stats={"u": 30_000_000}, mysql_version="5.7.44")
+    found = {f.rule_id: f for f in report.findings}
+    for rule in ("L01", "L03"):
+        assert "exclusive metadata lock" in found[rule].impact
+        assert "None expected" not in found[rule].impact
+    assert "applies the writes made during the rebuild" in found["L01"].impact
+    index = review("CREATE INDEX i ON u (name);", schema=schema)
+    l01 = next(f for f in index.findings if f.rule_id == "L01")
+    assert "exclusive metadata lock" in l01.impact and "rebuild" not in l01.impact
+    assert "exclusive metadata lock" in mcp_server.server.instructions
