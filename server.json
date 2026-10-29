@@ -7,12 +7,12 @@
     "url": "https://github.com/jimmyjan0824/mysql_audit_ai_agent",
     "source": "github"
   },
-  "version": "0.3.2",
+  "version": "0.3.3",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mysql-audit-ai-agent",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

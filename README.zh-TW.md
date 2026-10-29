@@ -305,7 +305,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: jimmyjan0824/mysql_audit_ai_agent@v0.3.2
+      - uses: jimmyjan0824/mysql_audit_ai_agent@v0.3.3
         with:
           paths: db/migrate/**/*.sql      # 預設：**/*.sql
           schema: db/schema.sql           # 選填，讓判斷更準確
