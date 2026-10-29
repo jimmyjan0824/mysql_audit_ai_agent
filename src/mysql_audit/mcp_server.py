@@ -24,7 +24,9 @@ server = MCPServer(
         "the findings. For exact results pass the CREATE TABLE statements as schema, row "
         "counts from information_schema.tables as stats, and the server's version as "
         "mysql_version. A .mysql-audit.toml in the project supplies any of these you leave out. "
-        "Before a migration on existing tables is deployed, give the user preflight_checks."
+        "Before a migration on existing tables is deployed, give the user preflight_checks. "
+        "Never tell the user an online ALTER (ALGORITHM=INPLACE, LOCK=NONE) does not block: it takes "
+        "an exclusive metadata lock at its start and end, and queries queue behind it while it waits."
     ),
 )
 
