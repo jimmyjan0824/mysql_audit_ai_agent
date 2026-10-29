@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mysql-audit-ai-agent"
-version = "0.3.2"
+version = "0.3.3"
 description = "MySQL schema-change safety review for AI coding agents (MCP server and CLI)"
 readme = "README.md"
 license = "Apache-2.0"
